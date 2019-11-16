@@ -99,7 +99,7 @@ typedef enum
 	DSP_STATE_INIT,
 	DSP_STATE_ONE_TIME, 	/* One time update */
 	DSP_STATE_CNT_UPDATE,	/* Continous update */
-	
+	DSP_STATE_IDLE
 }DSP_STATES;
 
 /*** Structures ***/
@@ -158,12 +158,8 @@ typedef struct
 typedef struct
 {
 	unsigned char				enable;
-	MQTT_STATES					state;
-	EventGroupHandle_t 			mqttEventGroup;
-	esp_mqtt_client_config_t	mqttCoreCfg;
-	esp_mqtt_client_handle_t 	mqttClient;
-	MQTT_BROKER_CONFIG			mqttCfg;
-}MQTT_CFG_FLOW;
+	DSP_STATES					state;
+}DSP_CFG_FLOW;
 
 /*** Functions Declarations ***/
 /* Tasks */
