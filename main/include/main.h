@@ -99,7 +99,8 @@ typedef enum
 	DSP_STATE_INIT,
 	DSP_STATE_ONE_TIME, 	/* One time update */
 	DSP_STATE_CNT_UPDATE,	/* Continous update */
-	DSP_STATE_IDLE
+	DSP_STATE_IDLE,
+	DSP_STATE_DO_NOTHIG
 }DSP_STATES;
 
 /*** Structures ***/
@@ -154,11 +155,11 @@ typedef struct
 }MQTT_CFG_FLOW;
 
 /* Display */
-
 typedef struct
 {
 	unsigned char				enable;
 	DSP_STATES					state;
+	u8g2_t 						u8g2Handler;
 }DSP_CFG_FLOW;
 
 /*** Functions Declarations ***/

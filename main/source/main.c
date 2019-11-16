@@ -15,6 +15,7 @@
 #define SET_NEXT_WIFI_STATE(nState)	(wifiFlowCntrl.state = nState)
 #define SET_NEXT_MOD_STATE(nState)	(modFlowCntrl.state = nState)
 #define SET_NEXT_MQTT_STATE(nState)	(mqttFlowCntrl.state = nState)
+#define SET_NEXT_DSP_STATE(nState)	(dspFlowCntrl.state = nState)
 #define	STATUS_LED					2
  
 /*** Externs ***/
@@ -52,6 +53,7 @@ static const char	*mqttEventHandlerTag = "mqttEventHandler: ";
 WIFI_CFG_FLOW		wifiFlowCntrl;		
 MODBUS_CFG_FLOW		modFlowCntrl;
 MQTT_CFG_FLOW		mqttFlowCntrl;
+DSP_CFG_FLOW		dspFlowCntrl;
 
 UART_BASE_CFG		uartCfgFlow;
 
@@ -260,6 +262,36 @@ static int setMqttCfg(MQTT_CFG_FLOW *mqttCfgFlw)
 	return RET_OK;
 }
 
+/* Display */
+static int initDisplay(DSP_CFG_FLOW *dspInitFlow)
+{
+	/* SPI Init */
+	u8g2_esp32_hal_t u8g2Esp32HalCfg	= U8G2_ESP32_HAL_DEFAULT;
+	u8g2Esp32HalCfg.clk 				= GPIO_NUM_19;
+	u8g2Esp32HalCfg.mosi 				= GPIO_NUM_4;
+	u8g2Esp32HalCfg.cs 					= GPIO_NUM_18;
+	u8g2Esp32HalCfg.reset 				= GPIO_NUM_16;
+	u8g2Esp32HalCfg.dc 					= GPIO_NUM_17;
+	
+	u8g2_esp32_hal_init(u8g2Esp32HalCfg);
+	u8g2_Setup_ssd1306_128x64_noname_f(	&dspInitFlow->u8g2Handler, U8G2_R0,
+										u8g2_esp32_spi_byte_cb, 
+										u8g2_esp32_gpio_and_delay_cb );
+	u8g2_InitDisplay(&dspInitFlow->u8g2Handler);
+
+	u8g2_SetPowerSave(&dspInitFlow->u8g2Handler, 0);
+	u8g2_SetContrast(&dspInitFlow->u8g2Handler, 128);
+	u8g2_ClearBuffer(&dspInitFlow->u8g2Handler);
+	u8g2_SetBitmapMode(&dspInitFlow->u8g2Handler, 0);
+	u8g2_SetDrawColor(&dspInitFlow->u8g2Handler, 1);
+	u8g2_SetFontMode(&dspInitFlow->u8g2Handler,0);
+	/* u8g2_SetFont(&dspInitFlow->u8g2Handler, u8g2_font_timR18_tf);
+	u8g2_DrawStr(&dspInitFlow->u8g2Handler, 2,40,"Hello World!");
+	u8g2_SendBuffer(&dspInitFlow->u8g2Handler); */
+
+	return RET_OK;
+}
+
 /* Public */
 int taskInit(void)
 {
@@ -451,55 +483,55 @@ void mqttTask(void *arg)
 
 void oledTask(void *arg)
 {
-	u8g2_t u8g2;
+	ESP_LOGI(mqttTaskTag, "ESP Display Task..!");
+	if(dspFlowCntrl.enable)
+		dspFlowCntrl.state = DSP_STATE_INIT;
+	else
+		dspFlowCntrl.state = DSP_STATE_DO_NOTHIG;
 
-	/* SPI Init */
-	u8g2_esp32_hal_t u8g2_esp32_hal = U8G2_ESP32_HAL_DEFAULT;
-	u8g2_esp32_hal.clk 		= GPIO_NUM_19;
-	u8g2_esp32_hal.mosi 	= GPIO_NUM_4;
-	u8g2_esp32_hal.cs 		= GPIO_NUM_18;
-	u8g2_esp32_hal.reset 	= GPIO_NUM_16;
-	u8g2_esp32_hal.dc 		= GPIO_NUM_17;
-	u8g2_esp32_hal_init(u8g2_esp32_hal);
-
-	u8g2_Setup_ssd1306_128x64_noname_f(&u8g2, U8G2_R0, u8g2_esp32_spi_byte_cb, u8g2_esp32_gpio_and_delay_cb);
-	//u8g2_Setup_pcd8544_84x48_f(&u8g2, U8G2_R0, u8g2_esp32_spi_byte_cb, u8g2_esp32_gpio_and_delay_cb);
-		
-	u8g2_InitDisplay(&u8g2);
-
-	u8g2_SetPowerSave(&u8g2, 0);
-	u8g2_SetContrast(&u8g2, 128);
-	u8g2_ClearBuffer(&u8g2);
-	u8g2_SetBitmapMode(&u8g2, 0);
-	u8g2_SetDrawColor(&u8g2, 0);	
-	u8g2_SetFont(&u8g2, u8g2_font_timR18_tf);
-	u8g2_DrawStr(&u8g2, 2,40,"Hello World!");
-
-	u8g2_SendBuffer(&u8g2);
 	while(TRUE)
 	{
-		// draw the hourglass animation, full-half-empty
-		u8g2_ClearBuffer(&u8g2);
-		u8g2_DrawXBM(&u8g2, 34, 2, 60, 60, hourglass_full);
-		u8g2_SendBuffer(&u8g2);
-		vTaskDelay(300 / portTICK_RATE_MS);
-		
-		u8g2_ClearBuffer(&u8g2);
-		u8g2_DrawXBM(&u8g2, 34, 2, 60, 60, hourglass_half);
-		u8g2_SendBuffer(&u8g2);
-		vTaskDelay(300 / portTICK_RATE_MS);
+		switch(dspFlowCntrl.state)
+		{
+			case DSP_STATE_INIT:
+			{
+				/* Init Display */
+				initDisplay(&dspFlowCntrl);
+				SET_NEXT_DSP_STATE(DSP_STATE_CNT_UPDATE);
+			}
+			break;
+			case DSP_STATE_CNT_UPDATE:
+			{
+				// draw the hourglass animation, full-half-empty
+				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
+				u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, 34, 2, 60, 60, hourglass_full);
+				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
+				vTaskDelay(100 / portTICK_RATE_MS);
+				
+				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
+				u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, 34, 2, 60, 60, hourglass_half);
+				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
+				vTaskDelay(100 / portTICK_RATE_MS);
 
-		u8g2_ClearBuffer(&u8g2);
-		u8g2_DrawXBM(&u8g2, 34, 2, 60, 60, hourglass_empty);
-		u8g2_SendBuffer(&u8g2);
-		vTaskDelay(300 / portTICK_RATE_MS);	
-		
-		// set font and write hello world
-		u8g2_ClearBuffer(&u8g2);
-		u8g2_SetFont(&u8g2, u8g2_font_timR14_tf);
-		u8g2_DrawStr(&u8g2, 2,17,"Hello World!");
-		u8g2_SendBuffer(&u8g2);
-		vTaskDelay(2000 / portTICK_RATE_MS);
+				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
+				u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, 34, 2, 60, 60, hourglass_empty);
+				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
+				vTaskDelay(100 / portTICK_RATE_MS);	
+				
+				// set font and write hello world
+				u8g2_SetContrast(&dspFlowCntrl.u8g2Handler, 128);
+				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
+				u8g2_SetFont(&dspFlowCntrl.u8g2Handler, u8g2_font_timR14_tf);
+				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 2,17,"Ganesh Thiru!");
+				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
+				vTaskDelay(2000 / portTICK_RATE_MS);
+				SET_NEXT_DSP_STATE(DSP_STATE_CNT_UPDATE);
+			}
+			break;
+			default:	//DSP_STATE_DO_NOTHIG
+				vTaskDelay(200);
+			break;
+		}
 	}
 }
 
@@ -509,15 +541,16 @@ void app_main(void)
     ESP_LOGI(mainTag,"! Sample Programe !");
 	ESP_LOGI(mainTag, "IDF version: %s", esp_get_idf_version());
     ESP_LOGI(mainTag, "cJSON Version: %s", cJSON_Version());
-	
+
 	/* Configuration Init */
 	setDefaultConfig();
-	
+	dspFlowCntrl.enable = TRUE;
+
 	/* Init Dependencies */
 	nvsFlashInit();
 	gpioInit();
 	taskInit();
-	
+
 	/* Live Loop */
 	while(TRUE)
 	{
