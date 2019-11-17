@@ -62,7 +62,7 @@ static const TASK_INFO	taskDetails[TOTAL_TASK] = {
 	{mUartTask,"UART Task",8192,NULL,1,&tUartHandler,1},
 	{wifiTask,"WIFI Task",8192,NULL,1,&tWifiHandler,0},
 	{mqttTask,"MQTT Task",8192,NULL,1,&tMqttHandler,0},
-	{oledTask,"OLED Task",8192,NULL,1,&tOledHandler,0}
+	{displayTask,"OLED Task",8192,NULL,1,&tOledHandler,0}
 	/* Add task info if you want new task and modify 'TOTAL_TASK' */
 };
 
@@ -481,8 +481,11 @@ void mqttTask(void *arg)
 	}
 }
 
-void oledTask(void *arg)
+void displayTask(void *arg)
 {
+	unsigned short int i = 0;
+	char buff[32] = {'\0'};
+
 	ESP_LOGI(mqttTaskTag, "ESP Display Task..!");
 	if(dspFlowCntrl.enable)
 		dspFlowCntrl.state = DSP_STATE_INIT;
@@ -503,6 +506,7 @@ void oledTask(void *arg)
 			case DSP_STATE_CNT_UPDATE:
 			{
 				// draw the hourglass animation, full-half-empty
+				#if 0
 				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
 				u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, 34, 2, 60, 60, hourglass_full);
 				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
@@ -517,14 +521,19 @@ void oledTask(void *arg)
 				u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, 34, 2, 60, 60, hourglass_empty);
 				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
 				vTaskDelay(100 / portTICK_RATE_MS);	
-				
-				// set font and write hello world
-				u8g2_SetContrast(&dspFlowCntrl.u8g2Handler, 128);
+				#endif
+
+				sprintf(buff,"Count=%d",i++);
+				// draw top line
 				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
+				u8g2_DrawLine(&dspFlowCntrl.u8g2Handler, 0, 15, 127, 15);
+				u8g2_DrawLine(&dspFlowCntrl.u8g2Handler, 0, 48, 127, 48);
 				u8g2_SetFont(&dspFlowCntrl.u8g2Handler, u8g2_font_timR14_tf);
-				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 2,17,"Ganesh Thiru!");
+				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 1,14,"255.255.255.255");
+				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 1,42,buff);
+				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 1,63,"!Btm Line!");
 				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
-				vTaskDelay(2000 / portTICK_RATE_MS);
+				vTaskDelay(1000 / portTICK_RATE_MS);
 				SET_NEXT_DSP_STATE(DSP_STATE_CNT_UPDATE);
 			}
 			break;

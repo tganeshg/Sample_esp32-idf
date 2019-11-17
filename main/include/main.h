@@ -167,7 +167,7 @@ typedef struct
 void wifiTask(void *arg);
 void mUartTask(void *arg);
 void mqttTask(void *arg);
-void oledTask(void *arg);
+void displayTask(void *arg);
 
 /* Public functions */
 /* uart.c */
