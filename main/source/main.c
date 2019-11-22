@@ -40,14 +40,14 @@ const char *data = "{																					\
   }																										\
 }";																										
 /* Debug Tags */
-static const char	*mainTag = "main: ";
-static const char	*nvsTag = "nvsFlashInit: ";
-static const char	*gpioTag = "gpioInit: ";
-static const char	*wifiEventHandlerTag = "wifiEventHandler: ";
-static const char	*wifiTaskTag = "wifiTask: ";
-static const char	*uartTaskTag = "mUartTask: ";
-static const char	*mqttTaskTag = "mqttTask: ";
-static const char	*mqttEventHandlerTag = "mqttEventHandler: ";
+static const char	*mainTag = "main ";
+static const char	*nvsTag = "nvsFlashInit ";
+static const char	*gpioTag = "gpioInit ";
+static const char	*wifiEventHandlerTag = "wifiEventHandler ";
+static const char	*wifiTaskTag = "wifiTask ";
+static const char	*uartTaskTag = "mUartTask ";
+static const char	*mqttTaskTag = "mqttTask ";
+static const char	*mqttEventHandlerTag = "mqttEventHandler ";
 
 /*** Structure Variables ***/
 WIFI_CFG_FLOW		wifiFlowCntrl;		
@@ -61,8 +61,8 @@ UART_BASE_CFG		uartCfgFlow;
 static const TASK_INFO	taskDetails[TOTAL_TASK] = {
 	{mUartTask,"UART Task",8192,NULL,1,&tUartHandler,1},
 	{wifiTask,"WIFI Task",8192,NULL,1,&tWifiHandler,0},
-	{mqttTask,"MQTT Task",8192,NULL,1,&tMqttHandler,0},
-	{displayTask,"OLED Task",8192,NULL,1,&tOledHandler,0}
+	{mqttTask,"MQTT Task",8192,NULL,1,&tMqttHandler,1},
+	{displayTask,"OLED Task",8192,NULL,1,&tOledHandler,1}
 	/* Add task info if you want new task and modify 'TOTAL_TASK' */
 };
 
@@ -78,7 +78,8 @@ static esp_err_t wifiEventHandler(void *ctx, system_event_t *event)
 		break;
 		case SYSTEM_EVENT_STA_GOT_IP:
 		{
-			ESP_LOGI(wifiEventHandlerTag, "Got IP in ST: %s", ip4addr_ntoa(&event->event_info.got_ip.ip_info.ip));
+			strcpy(uOpt->wifiStConfig.clientConf.cIpAddr,ip4addr_ntoa(&event->event_info.got_ip.ip_info.ip));
+			ESP_LOGI(wifiEventHandlerTag, "Got IP in ST: %s", uOpt->wifiStConfig.clientConf.cIpAddr);
 			xEventGroupSetBits(uOpt->stWifiEventGroup, WIFI_CONNECTED_BIT);
 		}
 		break;
@@ -188,10 +189,10 @@ static int gpioInit(void)
 static int setDefaultConfig(void)
 {
 	/* Wifi Configs */
-	wifiFlowCntrl.wifiStConfig.enable = FALSE;
+	wifiFlowCntrl.wifiStConfig.enable = TRUE;
 	strcpy(wifiFlowCntrl.wifiStConfig.clientConf.ssid,WIFI_SSID);
 	strcpy(wifiFlowCntrl.wifiStConfig.clientConf.passWd,WIFI_PASSWD);
-	strcpy(wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr,"0.0.0.0");
+	memset(wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr,0,SIZE_16);
 
 	/* Modbus Configs */
 	modFlowCntrl.enable = meterComConfig.enable = FALSE;
@@ -233,6 +234,9 @@ static int setDefaultConfig(void)
 	strcpy(mqttFlowCntrl.mqttCfg.passWord,"");
 	strcpy(mqttFlowCntrl.mqttCfg.clientId,ATNT_CLIENT_ID);
 	mqttFlowCntrl.mqttCfg.brokerPort = MQTT_PORT;
+
+	/* Display */
+	dspFlowCntrl.enable = TRUE;
 
 	return RET_OK;
 }
@@ -285,8 +289,8 @@ static int initDisplay(DSP_CFG_FLOW *dspInitFlow)
 	u8g2_SetBitmapMode(&dspInitFlow->u8g2Handler, 0);
 	u8g2_SetDrawColor(&dspInitFlow->u8g2Handler, 1);
 	u8g2_SetFontMode(&dspInitFlow->u8g2Handler,0);
-	/* u8g2_SetFont(&dspInitFlow->u8g2Handler, u8g2_font_timR18_tf);
-	u8g2_DrawStr(&dspInitFlow->u8g2Handler, 2,40,"Hello World!");
+	u8g2_SetFont(&dspInitFlow->u8g2Handler, u8g2_font_timR14_tf);
+	/*u8g2_DrawStr(&dspInitFlow->u8g2Handler, 2,40,"Hello World!");
 	u8g2_SendBuffer(&dspInitFlow->u8g2Handler); */
 
 	return RET_OK;
@@ -498,6 +502,9 @@ void displayTask(void *arg)
 		{
 			case DSP_STATE_INIT:
 			{
+				if( !(xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & WIFI_CONNECTED_BIT) )
+					break;
+
 				/* Init Display */
 				initDisplay(&dspFlowCntrl);
 				SET_NEXT_DSP_STATE(DSP_STATE_CNT_UPDATE);
@@ -528,8 +535,7 @@ void displayTask(void *arg)
 				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
 				u8g2_DrawLine(&dspFlowCntrl.u8g2Handler, 0, 15, 127, 15);
 				u8g2_DrawLine(&dspFlowCntrl.u8g2Handler, 0, 48, 127, 48);
-				u8g2_SetFont(&dspFlowCntrl.u8g2Handler, u8g2_font_timR14_tf);
-				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 1,14,"255.255.255.255");
+				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 1,14,wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr);
 				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 1,42,buff);
 				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 1,63,"!Btm Line!");
 				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
@@ -553,7 +559,6 @@ void app_main(void)
 
 	/* Configuration Init */
 	setDefaultConfig();
-	dspFlowCntrl.enable = TRUE;
 
 	/* Init Dependencies */
 	nvsFlashInit();
