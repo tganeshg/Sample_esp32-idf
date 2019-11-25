@@ -15,7 +15,6 @@
 #define SET_NEXT_WIFI_STATE(nState)	(wifiFlowCntrl.state = nState)
 #define SET_NEXT_MOD_STATE(nState)	(modFlowCntrl.state = nState)
 #define SET_NEXT_MQTT_STATE(nState)	(mqttFlowCntrl.state = nState)
-#define SET_NEXT_DSP_STATE(nState)	(dspFlowCntrl.state = nState)
 #define	STATUS_LED					2
  
 /*** Externs ***/
@@ -23,7 +22,7 @@ extern MODBUS_COM_CONFIG	meterComConfig;
 extern MODBUS_CONFIG		modConfig;
 	
 /*** Globals ***/
-TaskHandle_t	tWifiHandler,tUartHandler,tMqttHandler,tOledHandler;
+TaskHandle_t	tWifiHandler,tUartHandler,tMqttHandler;
 
 const char *data = "{																					\
   \"id\": \"a0c46778fd7f97ffad8d1a2f12c5d1b1\",															\
@@ -61,8 +60,7 @@ UART_BASE_CFG		uartCfgFlow;
 static const TASK_INFO	taskDetails[TOTAL_TASK] = {
 	{mUartTask,"UART Task",8192,NULL,1,&tUartHandler,1},
 	{wifiTask,"WIFI Task",8192,NULL,1,&tWifiHandler,0},
-	{mqttTask,"MQTT Task",8192,NULL,1,&tMqttHandler,1},
-	{displayTask,"OLED Task",8192,NULL,1,&tOledHandler,1}
+	{mqttTask,"MQTT Task",8192,NULL,1,&tMqttHandler,1}
 	/* Add task info if you want new task and modify 'TOTAL_TASK' */
 };
 
@@ -86,8 +84,9 @@ static esp_err_t wifiEventHandler(void *ctx, system_event_t *event)
 		case SYSTEM_EVENT_STA_DISCONNECTED:
 		{
 			xEventGroupClearBits(uOpt->stWifiEventGroup, WIFI_CONNECTED_BIT);
+			strcpy(wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr,"000.000.000.000");
 			esp_wifi_connect();
-			//ESP_LOGI(wifiEventHandlerTag,"Retrying to connect..!");
+			ESP_LOGI(wifiEventHandlerTag,"Retrying to connect..!");
 		}
 		break;
 		default:
@@ -192,7 +191,7 @@ static int setDefaultConfig(void)
 	wifiFlowCntrl.wifiStConfig.enable = TRUE;
 	strcpy(wifiFlowCntrl.wifiStConfig.clientConf.ssid,WIFI_SSID);
 	strcpy(wifiFlowCntrl.wifiStConfig.clientConf.passWd,WIFI_PASSWD);
-	memset(wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr,0,SIZE_16);
+	strcpy(wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr,"000.000.000.000");
 
 	/* Modbus Configs */
 	modFlowCntrl.enable = meterComConfig.enable = FALSE;
@@ -290,8 +289,8 @@ static int initDisplay(DSP_CFG_FLOW *dspInitFlow)
 	u8g2_SetDrawColor(&dspInitFlow->u8g2Handler, 1);
 	u8g2_SetFontMode(&dspInitFlow->u8g2Handler,0);
 	u8g2_SetFont(&dspInitFlow->u8g2Handler, u8g2_font_timR14_tf);
-	/*u8g2_DrawStr(&dspInitFlow->u8g2Handler, 2,40,"Hello World!");
-	u8g2_SendBuffer(&dspInitFlow->u8g2Handler); */
+	u8g2_DrawStr(&dspInitFlow->u8g2Handler, 2,40,"Loading..!");
+	u8g2_SendBuffer(&dspInitFlow->u8g2Handler);
 
 	return RET_OK;
 }
@@ -331,15 +330,18 @@ void wifiTask(void *arg)
 		{
 			case WIFI_STATE_INIT:
 			{
+				/* Init Display */
+				initDisplay(&dspFlowCntrl);
+
 				/* FreeRTOS event group to signal when we are connected*/
 				wifiFlowCntrl.stWifiEventGroup = xEventGroupCreate();
-				
+
 				tcpip_adapter_init();
 				ESP_ERROR_CHECK(esp_event_loop_init(wifiEventHandler, (void *)&wifiFlowCntrl));
 
 				wifi_init_config_t stInitConfig = WIFI_INIT_CONFIG_DEFAULT();
 				ESP_ERROR_CHECK(esp_wifi_init(&stInitConfig));
-				
+
 				SET_NEXT_WIFI_STATE(WIFI_STATE_REINIT);
 			}
 			break;
@@ -353,10 +355,25 @@ void wifiTask(void *arg)
 				ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 				ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifiFlowCntrl.wifiCoreConfig));
 				ESP_ERROR_CHECK(esp_wifi_start());
-				
+
 				ESP_LOGI(wifiTaskTag, "WIFI Station Mode Init Finished..!");
-				ESP_LOGI(wifiTaskTag, "Connect to SSID:%s Password:%s",wifiFlowCntrl.wifiCoreConfig.sta.ssid, 
-																			wifiFlowCntrl.wifiCoreConfig.sta.password);
+				ESP_LOGI(wifiTaskTag, "Connect to SSID:%s Password:%s",	wifiFlowCntrl.wifiCoreConfig.sta.ssid, 
+																		wifiFlowCntrl.wifiCoreConfig.sta.password);
+				SET_NEXT_WIFI_STATE(WIFI_STATE_IDLE);
+			}
+			break;
+			case WIFI_STATE_IDLE:
+			{
+				// Update Display
+				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
+				u8g2_SetBitmapMode(&dspFlowCntrl.u8g2Handler, 0);
+				u8g2_SetDrawColor(&dspFlowCntrl.u8g2Handler, 1);
+				u8g2_SetFontMode(&dspFlowCntrl.u8g2Handler,0);
+				u8g2_SetFont(&dspFlowCntrl.u8g2Handler, u8g2_font_timR14_tf);
+				u8g2_DrawLine(&dspFlowCntrl.u8g2Handler, 0, 17, 127, 17);
+				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 1,14,wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr);
+				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
+				vTaskDelay(200 / portTICK_RATE_MS);
 				SET_NEXT_WIFI_STATE(WIFI_STATE_IDLE);
 			}
 			break;
@@ -479,71 +496,6 @@ void mqttTask(void *arg)
 			}
 			break;
 			default: // MQTT_STATE_DO_NOTHIG
-				vTaskDelay(200);
-			break;
-		}
-	}
-}
-
-void displayTask(void *arg)
-{
-	unsigned short int i = 0;
-	char buff[32] = {'\0'};
-
-	ESP_LOGI(mqttTaskTag, "ESP Display Task..!");
-	if(dspFlowCntrl.enable)
-		dspFlowCntrl.state = DSP_STATE_INIT;
-	else
-		dspFlowCntrl.state = DSP_STATE_DO_NOTHIG;
-
-	while(TRUE)
-	{
-		switch(dspFlowCntrl.state)
-		{
-			case DSP_STATE_INIT:
-			{
-				if( !(xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & WIFI_CONNECTED_BIT) )
-					break;
-
-				/* Init Display */
-				initDisplay(&dspFlowCntrl);
-				SET_NEXT_DSP_STATE(DSP_STATE_CNT_UPDATE);
-			}
-			break;
-			case DSP_STATE_CNT_UPDATE:
-			{
-				// draw the hourglass animation, full-half-empty
-				#if 0
-				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
-				u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, 34, 2, 60, 60, hourglass_full);
-				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
-				vTaskDelay(100 / portTICK_RATE_MS);
-				
-				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
-				u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, 34, 2, 60, 60, hourglass_half);
-				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
-				vTaskDelay(100 / portTICK_RATE_MS);
-
-				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
-				u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, 34, 2, 60, 60, hourglass_empty);
-				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
-				vTaskDelay(100 / portTICK_RATE_MS);	
-				#endif
-
-				sprintf(buff,"Count=%d",i++);
-				// draw top line
-				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
-				u8g2_DrawLine(&dspFlowCntrl.u8g2Handler, 0, 15, 127, 15);
-				u8g2_DrawLine(&dspFlowCntrl.u8g2Handler, 0, 48, 127, 48);
-				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 1,14,wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr);
-				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 1,42,buff);
-				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 1,63,"!Btm Line!");
-				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
-				vTaskDelay(1000 / portTICK_RATE_MS);
-				SET_NEXT_DSP_STATE(DSP_STATE_CNT_UPDATE);
-			}
-			break;
-			default:	//DSP_STATE_DO_NOTHIG
 				vTaskDelay(200);
 			break;
 		}

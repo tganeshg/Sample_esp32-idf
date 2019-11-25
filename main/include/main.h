@@ -40,7 +40,7 @@
 #define WIFI_PASSWD			"ganesh@234"
 
 /* Increment while adding new task */
-#define TOTAL_TASK				4
+#define TOTAL_TASK				3
 
 /* Uart Tx and Rx Buffer size */
 #define	UART_BUF_SIZE			512
@@ -93,15 +93,6 @@ typedef enum
 	MQTT_STATE_IDLE,
 	MQTT_STATE_DO_NOTHIG
 }MQTT_STATES;
-
-typedef enum
-{
-	DSP_STATE_INIT,
-	DSP_STATE_ONE_TIME, 	/* One time update */
-	DSP_STATE_CNT_UPDATE,	/* Continous update */
-	DSP_STATE_IDLE,
-	DSP_STATE_DO_NOTHIG
-}DSP_STATES;
 
 /*** Structures ***/
 /* Task */
@@ -158,7 +149,6 @@ typedef struct
 typedef struct
 {
 	unsigned char				enable;
-	DSP_STATES					state;
 	u8g2_t 						u8g2Handler;
 }DSP_CFG_FLOW;
 
