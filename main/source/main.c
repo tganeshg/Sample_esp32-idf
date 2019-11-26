@@ -266,6 +266,16 @@ static int setMqttCfg(MQTT_CFG_FLOW *mqttCfgFlw)
 }
 
 /* Display */
+static int setBasicInfo(DSP_CFG_FLOW *dspCtrl)
+{
+	u8g2_SetBitmapMode(&dspCtrl->u8g2Handler, 0);
+	u8g2_SetDrawColor(&dspCtrl->u8g2Handler, 1);
+	u8g2_SetFontMode(&dspCtrl->u8g2Handler,0);
+	u8g2_SetFont(&dspCtrl->u8g2Handler, u8g2_font_timR14_tf);
+
+	return RET_OK;
+}
+
 static int initDisplay(DSP_CFG_FLOW *dspInitFlow)
 {
 	/* SPI Init */
@@ -285,10 +295,7 @@ static int initDisplay(DSP_CFG_FLOW *dspInitFlow)
 	u8g2_SetPowerSave(&dspInitFlow->u8g2Handler, 0);
 	u8g2_SetContrast(&dspInitFlow->u8g2Handler, 128);
 	u8g2_ClearBuffer(&dspInitFlow->u8g2Handler);
-	u8g2_SetBitmapMode(&dspInitFlow->u8g2Handler, 0);
-	u8g2_SetDrawColor(&dspInitFlow->u8g2Handler, 1);
-	u8g2_SetFontMode(&dspInitFlow->u8g2Handler,0);
-	u8g2_SetFont(&dspInitFlow->u8g2Handler, u8g2_font_timR14_tf);
+	setBasicInfo(dspInitFlow);
 	u8g2_DrawStr(&dspInitFlow->u8g2Handler, 2,40,"Loading..!");
 	u8g2_SendBuffer(&dspInitFlow->u8g2Handler);
 
@@ -318,6 +325,8 @@ int taskInit(void)
 /* Task */
 void wifiTask(void *arg)
 {
+	wifi_ap_record_t ap_info;
+
 	ESP_LOGI(wifiTaskTag, "ESP WIFI Station Mode Task..!");
 	if(wifiFlowCntrl.wifiStConfig.enable)
 		wifiFlowCntrl.state = WIFI_STATE_INIT;
@@ -364,20 +373,35 @@ void wifiTask(void *arg)
 			break;
 			case WIFI_STATE_IDLE:
 			{
-				// Update Display
+				/* Update Display */
 				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
-				u8g2_SetBitmapMode(&dspFlowCntrl.u8g2Handler, 0);
-				u8g2_SetDrawColor(&dspFlowCntrl.u8g2Handler, 1);
-				u8g2_SetFontMode(&dspFlowCntrl.u8g2Handler,0);
-				u8g2_SetFont(&dspFlowCntrl.u8g2Handler, u8g2_font_timR14_tf);
-				u8g2_DrawLine(&dspFlowCntrl.u8g2Handler, 0, 17, 127, 17);
-				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, 1,14,wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr);
+				setBasicInfo(&dspFlowCntrl);
+				u8g2_DrawLine(&dspFlowCntrl.u8g2Handler, TOP_LINE_S_X_AXIS,TOP_LINE_S_Y_AXIS,TOP_LINE_E_X_AXIS,TOP_LINE_E_Y_AXIS); //Top Line 
+				u8g2_DrawLine(&dspFlowCntrl.u8g2Handler, BOTTOM_LINE_S_X_AXIS,BOTTOM_LINE_S_Y_AXIS,BOTTOM_LINE_E_X_AXIS,BOTTOM_LINE_E_Y_AXIS); //Bottom Line
+				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, DSP_WIFI_ST_IP_X,DSP_WIFI_ST_IP_Y,wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr);
+
+				/* Signal Strength Updation */
+				if( xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & WIFI_CONNECTED_BIT )
+				{
+					ESP_ERROR_CHECK(esp_wifi_sta_get_ap_info(&ap_info));
+					if( ap_info.rssi >= WIFI_SS_100P ) 																					//100 Percentage
+						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_100_bits);
+					else if( (ap_info.rssi < WIFI_SS_100P) && (ap_info.rssi >= WIFI_SS_75P) ) 											//75 Percentage
+						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_75_bits);
+					else if( (ap_info.rssi < WIFI_SS_75P) && (ap_info.rssi >= WIFI_SS_50P) ) 											//50 Percentage
+						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_50_bits);
+					else if( (ap_info.rssi < WIFI_SS_50P) && (ap_info.rssi >= WIFI_SS_25P) ) 											//25 Percentage
+						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_25_bits);
+					else																												//0 Percentage
+						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_0_bits);
+				}
+
 				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
 				vTaskDelay(200 / portTICK_RATE_MS);
 				SET_NEXT_WIFI_STATE(WIFI_STATE_IDLE);
 			}
 			break;
-			default:	//WIFI_STATE_DO_NOTHIG
+			default: //WIFI_STATE_DO_NOTHIG
 				vTaskDelay(200);
 			break;
 		}

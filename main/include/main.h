@@ -39,6 +39,12 @@
 #define WIFI_SSID			"ganesh"
 #define WIFI_PASSWD			"ganesh@234"
 
+#define	WIFI_SS_100P		-30
+#define	WIFI_SS_75P			-67
+#define	WIFI_SS_50P			-70
+#define	WIFI_SS_25P			-80
+#define	WIFI_SS_0P			-90
+
 /* Increment while adding new task */
 #define TOTAL_TASK				3
 
@@ -61,6 +67,24 @@
 #define	ATNT_DEVICE_ID			"a0c46778fd7f97ffad8d1a2f12c5d1b1"
 #define	ATNT_CLIENT_ID			"esp32_0001"
 
+/* Display */
+#define	TOP_LINE_S_X_AXIS		0
+#define TOP_LINE_S_Y_AXIS		17
+#define TOP_LINE_E_X_AXIS		127
+#define TOP_LINE_E_Y_AXIS		17
+
+#define	BOTTOM_LINE_S_X_AXIS	0	
+#define BOTTOM_LINE_S_Y_AXIS	46
+#define BOTTOM_LINE_E_X_AXIS	127
+#define BOTTOM_LINE_E_Y_AXIS	46
+
+#define DSP_X_AXIS_SS			95
+#define DSP_Y_AXIS_SS			19
+#define DSP_SS_W				26
+#define DSP_SS_H				26
+
+#define DSP_WIFI_ST_IP_X		1
+#define DSP_WIFI_ST_IP_Y		14
 
 /*** Enums ***/
 typedef enum
