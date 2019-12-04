@@ -316,10 +316,15 @@ int taskInit(void)
 									taskDetails[tIdx].tHandler,
 									taskDetails[tIdx].xCoreID
 								);
-		vTaskDelay(200);
+		delayMs(200);
 	}
 
 	return RET_OK;
+}
+
+void delayMs(const TickType_t mSec)
+{
+	vTaskDelay(mSec / portTICK_RATE_MS);
 }
 
 /* Task */
@@ -397,12 +402,12 @@ void wifiTask(void *arg)
 				}
 
 				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
-				vTaskDelay(200 / portTICK_RATE_MS);
+				delayMs(200);
 				SET_NEXT_WIFI_STATE(WIFI_STATE_IDLE);
 			}
 			break;
 			default: //WIFI_STATE_DO_NOTHIG
-				vTaskDelay(200);
+				delayMs(200);
 			break;
 		}
 	}
@@ -430,7 +435,7 @@ void mUartTask(void *arg)
 			break;
 			case MOD_STATE_READ_QRY:
 			{
-				vTaskDelay(600);
+				delayMs(600);
 				modFlowCntrl.mQryIdx = (modFlowCntrl.mQryIdx < meterComConfig.numOfQry) ? modFlowCntrl.mQryIdx : 0;
 				ESP_LOGI(uartTaskTag, "Send Qry Idx %d",modFlowCntrl.mQryIdx);
 				getMqry(modFlowCntrl.mQryIdx);
@@ -463,7 +468,7 @@ void mUartTask(void *arg)
 			}
 			break;
 			default:	//MOD_STATE_DO_NOTHIG
-				vTaskDelay(200);
+				delayMs(200);
 			break;
 		}
 	}
@@ -503,7 +508,7 @@ void mqttTask(void *arg)
 				}
 				else
 				{
-					vTaskDelay(500);
+					delayMs(500);
 					ESP_LOGI(mqttTaskTag, "Waiting to wifi Connect..");
 					SET_NEXT_MQTT_STATE(MQTT_STATE_CONNECT);
 				}
@@ -511,7 +516,7 @@ void mqttTask(void *arg)
 			break;
 			case MQTT_STATE_IDLE:
 			{
-				vTaskDelay(2000);
+				delayMs(2000);
 
 			    msgId = esp_mqtt_client_publish(mqttFlowCntrl.mqttClient, 
 												"m2x/0569fed2d45691932babd1dccc81e672/requests", data, 0, 1, 0);
@@ -520,7 +525,7 @@ void mqttTask(void *arg)
 			}
 			break;
 			default: // MQTT_STATE_DO_NOTHIG
-				vTaskDelay(200);
+				delayMs(200);
 			break;
 		}
 	}
@@ -545,9 +550,9 @@ void app_main(void)
 	while(TRUE)
 	{
 		gpio_set_level(STATUS_LED,0);
-		vTaskDelay(600);
+		delayMs(600);
 		gpio_set_level(STATUS_LED,1);
-		vTaskDelay(600);
+		delayMs(600);
 	}
 
 	return;
