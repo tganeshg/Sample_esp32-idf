@@ -86,7 +86,7 @@ static esp_err_t wifiEventHandler(void *ctx, system_event_t *event)
 			xEventGroupClearBits(uOpt->stWifiEventGroup, WIFI_CONNECTED_BIT);
 			strcpy(wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr,"000.000.000.000");
 			esp_wifi_connect();
-			ESP_LOGI(wifiEventHandlerTag,"Retrying to connect..!");
+			//ESP_LOGI(wifiEventHandlerTag,"Retrying to connect..!");
 		}
 		break;
 		default:

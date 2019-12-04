@@ -78,7 +78,7 @@
 #define BOTTOM_LINE_E_X_AXIS	127
 #define BOTTOM_LINE_E_Y_AXIS	46
 
-#define DSP_X_AXIS_SS			105
+#define DSP_X_AXIS_SS			102
 #define DSP_Y_AXIS_SS			19
 #define DSP_SS_W				26
 #define DSP_SS_H				26
