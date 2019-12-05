@@ -6,6 +6,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <time.h>
+#include <sys/time.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -19,12 +21,15 @@
 #include "driver/uart.h"
 #include "esp_event_loop.h"
 #include "esp_log.h"
+#include "esp_attr.h"
+#include "esp_sleep.h"
 #include "nvs_flash.h"
 #include "lwip/err.h"
 #include "lwip/sys.h"
 #include "lwip/sockets.h"
 #include "lwip/dns.h"
 #include "lwip/netdb.h"
+#include "lwip/apps/sntp.h"
 #include "mqtt_client.h"
 #include "cJSON.h"
 
@@ -45,6 +50,7 @@
 #define	WIFI_SS_25P			-80
 #define	WIFI_SS_0P			-90
 
+#define	INDIAN_NTP_SERVER	"0.in.pool.ntp.org"
 /* Increment while adding new task */
 #define TOTAL_TASK				3
 
@@ -54,6 +60,8 @@
 /* Flag's Bit */
 	/* WIFI */
 #define WIFI_CONNECTED_BIT		BIT0
+#define TIME_UPDATED_BIT		BIT1
+
 	/* MQTT */
 #define MQTT_CONNECTED_BIT		BIT0
 #define MQTT_PORT				1883
@@ -85,6 +93,14 @@
 
 #define DSP_WIFI_ST_IP_X		1
 #define DSP_WIFI_ST_IP_Y		14
+
+#define DSP_WIFI_TIME_X			28
+#define DSP_WIFI_TIME_Y			43
+
+#define DSP_X_AXIS_CLOCK		1
+#define DSP_Y_AXIS_CLOCK		19
+#define DSP_CLOCK_W				26
+#define DSP_CLOCK_H				26
 
 /*** Enums ***/
 typedef enum

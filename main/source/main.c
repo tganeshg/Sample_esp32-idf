@@ -23,6 +23,8 @@ extern MODBUS_CONFIG		modConfig;
 	
 /*** Globals ***/
 TaskHandle_t	tWifiHandler,tUartHandler,tMqttHandler;
+time_t now;
+struct tm timeinfo;
 
 const char *data = "{																					\
   \"id\": \"a0c46778fd7f97ffad8d1a2f12c5d1b1\",															\
@@ -185,6 +187,15 @@ static int gpioInit(void)
 	return RET_OK;
 }
 
+static void initializeSntp(void)
+{
+    ESP_LOGI("sntp ", "Initializing SNTP...");
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    sntp_setservername(0, INDIAN_NTP_SERVER);
+    sntp_init();
+	return;
+}
+
 static int setDefaultConfig(void)
 {
 	/* Wifi Configs */
@@ -331,6 +342,9 @@ void delayMs(const TickType_t mSec)
 void wifiTask(void *arg)
 {
 	wifi_ap_record_t ap_info;
+	int retry = 0;
+	const int retryCount = 10;
+	char timeBuffer[SIZE_32];
 
 	ESP_LOGI(wifiTaskTag, "ESP WIFI Station Mode Task..!");
 	if(wifiFlowCntrl.wifiStConfig.enable)
@@ -388,6 +402,32 @@ void wifiTask(void *arg)
 				/* Signal Strength Updation */
 				if( xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & WIFI_CONNECTED_BIT )
 				{
+					if( !(xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & TIME_UPDATED_BIT) )
+					{
+						initializeSntp();
+
+						// wait for time to be set
+						while(timeinfo.tm_year < (2019 - 1900) && ++retry < retryCount) 
+						{
+							ESP_LOGI(wifiTaskTag, "Waiting for system time to be set... (%d/%d)", retry, retryCount);
+							delayMs(2000);
+							time(&now);
+							localtime_r(&now, &timeinfo);
+						}
+						// Set timezone to Eastern Standard Time and print local time
+						setenv("TZ","GMT -5:30", 1);
+						tzset();
+						time(&now);
+						localtime_r(&now, &timeinfo);
+						ESP_LOGI(wifiTaskTag, "Obtained Time : %02d/%02d/%04d %02d:%02d:%02d",	timeinfo.tm_mday,
+																								(timeinfo.tm_mon + 1),
+																								(timeinfo.tm_year + 1900),
+																								timeinfo.tm_hour,
+																								timeinfo.tm_min,
+																								timeinfo.tm_sec);
+						xEventGroupSetBits(wifiFlowCntrl.stWifiEventGroup, TIME_UPDATED_BIT);
+					}
+
 					ESP_ERROR_CHECK(esp_wifi_sta_get_ap_info(&ap_info));
 					if( ap_info.rssi >= WIFI_SS_100P ) 																					//100 Percentage
 						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_100_bits);
@@ -399,6 +439,16 @@ void wifiTask(void *arg)
 						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_25_bits);
 					else																												//0 Percentage
 						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_0_bits);
+				}
+				/* Time Update to Display */
+				if( (xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & TIME_UPDATED_BIT) )
+				{
+					memset(timeBuffer,0,sizeof(timeBuffer));
+					time(&now);
+					localtime_r(&now, &timeinfo);
+					sprintf(timeBuffer,"%02d:%02d:%02d",timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec);
+					u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, DSP_WIFI_TIME_X,DSP_WIFI_TIME_Y,timeBuffer);
+					u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_CLOCK, DSP_Y_AXIS_CLOCK, DSP_CLOCK_W, DSP_CLOCK_H, clock_bits);
 				}
 
 				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
