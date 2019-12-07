@@ -15,6 +15,7 @@
 #define SET_NEXT_WIFI_STATE(nState)	(wifiFlowCntrl.state = nState)
 #define SET_NEXT_MOD_STATE(nState)	(modFlowCntrl.state = nState)
 #define SET_NEXT_MQTT_STATE(nState)	(mqttFlowCntrl.state = nState)
+#define SET_NEXT_SNTP_STATE(nState)	(sntpFlowCntrl.state = nState)
 #define	STATUS_LED					2
  
 /*** Externs ***/
@@ -55,7 +56,7 @@ WIFI_CFG_FLOW		wifiFlowCntrl;
 MODBUS_CFG_FLOW		modFlowCntrl;
 MQTT_CFG_FLOW		mqttFlowCntrl;
 DSP_CFG_FLOW		dspFlowCntrl;
-
+SNTP_CFG_FLOW		sntpFlowCntrl;
 UART_BASE_CFG		uartCfgFlow;
 
 /* Constants in Structure Variables */
@@ -248,6 +249,10 @@ static int setDefaultConfig(void)
 	/* Display */
 	dspFlowCntrl.enable = TRUE;
 
+	/* SNTP */
+	sntpFlowCntrl.enable = TRUE;
+	strcpy(sntpFlowCntrl.ntpServer,INDIAN_NTP_SERVER);
+
 	return RET_OK;
 }
 
@@ -342,8 +347,6 @@ void delayMs(const TickType_t mSec)
 void wifiTask(void *arg)
 {
 	wifi_ap_record_t ap_info;
-	int retry = 0;
-	const int retryCount = 10;
 	char timeBuffer[SIZE_32];
 
 	ESP_LOGI(wifiTaskTag, "ESP WIFI Station Mode Task..!");
@@ -351,6 +354,11 @@ void wifiTask(void *arg)
 		wifiFlowCntrl.state = WIFI_STATE_INIT;
 	else
 		wifiFlowCntrl.state = WIFI_STATE_DO_NOTHIG;
+
+	if(sntpFlowCntrl.enable)
+		sntpFlowCntrl.state = SNTP_STATE_INIT;
+	else
+		sntpFlowCntrl.state = SNTP_STATE_DO_NOTHIG;
 
 	while(TRUE)
 	{
@@ -399,35 +407,61 @@ void wifiTask(void *arg)
 				u8g2_DrawLine(&dspFlowCntrl.u8g2Handler, BOTTOM_LINE_S_X_AXIS,BOTTOM_LINE_S_Y_AXIS,BOTTOM_LINE_E_X_AXIS,BOTTOM_LINE_E_Y_AXIS); //Bottom Line
 				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, DSP_WIFI_ST_IP_X,DSP_WIFI_ST_IP_Y,wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr);
 
-				/* Signal Strength Updation */
 				if( xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & WIFI_CONNECTED_BIT )
 				{
+					/* SNTP-Date and Time Update */
 					if( !(xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & TIME_UPDATED_BIT) )
 					{
-						initializeSntp();
-
-						// wait for time to be set
-						while(timeinfo.tm_year < (2019 - 1900) && ++retry < retryCount) 
+						switch(sntpFlowCntrl.state)
 						{
-							ESP_LOGI(wifiTaskTag, "Waiting for system time to be set... (%d/%d)", retry, retryCount);
-							delayMs(2000);
-							time(&now);
-							localtime_r(&now, &timeinfo);
+							case SNTP_STATE_INIT:
+							{
+								initializeSntp();
+								SET_NEXT_SNTP_STATE(SNTP_STATE_IDLE);
+							}
+							break;
+							case SNTP_STATE_IDLE:
+							{
+								if(timeinfo.tm_year < (2019 - 1900))
+								{
+									delayMs(2000); //Need to replace with non blocking delay
+									time(&now);
+									localtime_r(&now, &timeinfo);
+								}
+								else
+								{
+									// Set timezone to Eastern Standard Time and print local time
+									setenv("TZ","GMT -5:30", 1);
+									tzset();
+									time(&now);
+									localtime_r(&now, &timeinfo);
+									ESP_LOGI(wifiTaskTag, "Obtained Time : %02d/%02d/%04d %02d:%02d:%02d",	timeinfo.tm_mday,
+																											(timeinfo.tm_mon + 1),
+																											(timeinfo.tm_year + 1900),
+																											timeinfo.tm_hour,
+																											timeinfo.tm_min,
+																											timeinfo.tm_sec);
+									xEventGroupSetBits(wifiFlowCntrl.stWifiEventGroup, TIME_UPDATED_BIT);
+									SET_NEXT_SNTP_STATE(SNTP_STATE_DO_NOTHIG);
+								}
+							}
+							break;
+							default:
+							break;
 						}
-						// Set timezone to Eastern Standard Time and print local time
-						setenv("TZ","GMT -5:30", 1);
-						tzset();
+					}
+					else
+					{
+						/* Time Update to Display */
+						memset(timeBuffer,0,sizeof(timeBuffer));
 						time(&now);
 						localtime_r(&now, &timeinfo);
-						ESP_LOGI(wifiTaskTag, "Obtained Time : %02d/%02d/%04d %02d:%02d:%02d",	timeinfo.tm_mday,
-																								(timeinfo.tm_mon + 1),
-																								(timeinfo.tm_year + 1900),
-																								timeinfo.tm_hour,
-																								timeinfo.tm_min,
-																								timeinfo.tm_sec);
-						xEventGroupSetBits(wifiFlowCntrl.stWifiEventGroup, TIME_UPDATED_BIT);
+						sprintf(timeBuffer,"%02d:%02d:%02d",timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec);
+						u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, DSP_WIFI_TIME_X,DSP_WIFI_TIME_Y,timeBuffer);
+						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_CLOCK, DSP_Y_AXIS_CLOCK, DSP_CLOCK_W, DSP_CLOCK_H, clock_bits);
 					}
 
+					/* Signal Strength Updation */
 					ESP_ERROR_CHECK(esp_wifi_sta_get_ap_info(&ap_info));
 					if( ap_info.rssi >= WIFI_SS_100P ) 																					//100 Percentage
 						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_100_bits);
@@ -440,19 +474,9 @@ void wifiTask(void *arg)
 					else																												//0 Percentage
 						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_0_bits);
 				}
-				/* Time Update to Display */
-				if( (xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & TIME_UPDATED_BIT) )
-				{
-					memset(timeBuffer,0,sizeof(timeBuffer));
-					time(&now);
-					localtime_r(&now, &timeinfo);
-					sprintf(timeBuffer,"%02d:%02d:%02d",timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec);
-					u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, DSP_WIFI_TIME_X,DSP_WIFI_TIME_Y,timeBuffer);
-					u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_CLOCK, DSP_Y_AXIS_CLOCK, DSP_CLOCK_W, DSP_CLOCK_H, clock_bits);
-				}
 
 				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
-				delayMs(200);
+				//delayMs(200);
 				SET_NEXT_WIFI_STATE(WIFI_STATE_IDLE);
 			}
 			break;

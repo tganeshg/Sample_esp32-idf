@@ -41,16 +41,16 @@
 /*** Macros ***/
 
 /* WIFI Credentials */
-#define WIFI_SSID			"ganesh"
-#define WIFI_PASSWD			"ganesh@234"
+#define WIFI_SSID				"ganesh"
+#define WIFI_PASSWD				"ganesh@234"
 
-#define	WIFI_SS_100P		-30
-#define	WIFI_SS_75P			-67
-#define	WIFI_SS_50P			-70
-#define	WIFI_SS_25P			-80
-#define	WIFI_SS_0P			-90
+#define	WIFI_SS_100P			-30
+#define	WIFI_SS_75P				-67
+#define	WIFI_SS_50P				-70
+#define	WIFI_SS_25P				-80
+#define	WIFI_SS_0P				-90
 
-#define	INDIAN_NTP_SERVER	"0.in.pool.ntp.org"
+#define	INDIAN_NTP_SERVER		"0.in.pool.ntp.org"
 /* Increment while adding new task */
 #define TOTAL_TASK				3
 
@@ -134,6 +134,13 @@ typedef enum
 	MQTT_STATE_DO_NOTHIG
 }MQTT_STATES;
 
+typedef enum
+{
+	SNTP_STATE_INIT,
+	SNTP_STATE_IDLE,
+	SNTP_STATE_DO_NOTHIG
+}SNTP_STATES;
+
 /*** Structures ***/
 /* Task */
 typedef struct
@@ -191,6 +198,14 @@ typedef struct
 	unsigned char				enable;
 	u8g2_t 						u8g2Handler;
 }DSP_CFG_FLOW;
+
+/* SNTP */
+typedef struct
+{
+	unsigned char				enable;
+	char						ntpServer[SIZE_64];
+	SNTP_STATES					state;
+}SNTP_CFG_FLOW;
 
 /*** Functions Declarations ***/
 /* Tasks */
