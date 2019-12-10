@@ -10,6 +10,7 @@
 /*** Includes ***/
 #include "main.h"
 #include "icons.h"
+#include "mqttData.h"
 
 /*** Local Macros ***/
 #define SET_NEXT_WIFI_STATE(nState)	(wifiFlowCntrl.state = nState)
@@ -23,30 +24,17 @@ extern MODBUS_COM_CONFIG	meterComConfig;
 extern MODBUS_CONFIG		modConfig;
 	
 /*** Globals ***/
-TaskHandle_t	tWifiHandler,tUartHandler,tMqttHandler;
-time_t now;
-struct tm timeinfo;
+TaskHandle_t				tWifiHandler,tUartHandler,tMqttHandler;
+time_t 						now;
+struct tm 					timeinfo;
+bool 						wifiConnected; //Need to replace with Bit wise flags
 
-const char *data = "{																					\
-  \"id\": \"a0c46778fd7f97ffad8d1a2f12c5d1b1\",															\
-  \"method\": \"POST\",																					\
-  \"resource\": \"/v2/devices/a0c46778fd7f97ffad8d1a2f12c5d1b1/streams/Coil_1_Status/values\",			\
-  \"agent\": \"M2X-Demo-Client/0.0.1\",																	\
-  \"body\": {																							\
-    \"values\": [																						\
-      {																									\
-        \"timestamp\": \"2014-08-19T13:37:09Z\",														\
-        \"value\": \"1\"																				\
-      }																									\
-    ]																									\
-  }																										\
-}";																										
 /* Debug Tags */
 static const char	*mainTag = "main ";
 static const char	*nvsTag = "nvsFlashInit ";
 static const char	*gpioTag = "gpioInit ";
 static const char	*wifiEventHandlerTag = "wifiEventHandler ";
-static const char	*wifiTaskTag = "wifiTask ";
+static const char	*wifiTaskTag = "mainTask ";
 static const char	*uartTaskTag = "mUartTask ";
 static const char	*mqttTaskTag = "mqttTask ";
 static const char	*mqttEventHandlerTag = "mqttEventHandler ";
@@ -61,9 +49,9 @@ UART_BASE_CFG		uartCfgFlow;
 
 /* Constants in Structure Variables */
 static const TASK_INFO	taskDetails[TOTAL_TASK] = {
-	{mUartTask,"UART Task",8192,NULL,1,&tUartHandler,1},
-	{wifiTask,"WIFI Task",8192,NULL,1,&tWifiHandler,0},
-	{mqttTask,"MQTT Task",8192,NULL,1,&tMqttHandler,1}
+	{mainTask,"WIFI Task",8192,NULL,1,&tWifiHandler,0},
+	{mqttTask,"MQTT Task",8192,NULL,2,&tMqttHandler,1},
+	{mUartTask,"UART Task",8192,NULL,3,&tUartHandler,1}
 	/* Add task info if you want new task and modify 'TOTAL_TASK' */
 };
 
@@ -82,11 +70,13 @@ static esp_err_t wifiEventHandler(void *ctx, system_event_t *event)
 			strcpy(uOpt->wifiStConfig.clientConf.cIpAddr,ip4addr_ntoa(&event->event_info.got_ip.ip_info.ip));
 			ESP_LOGI(wifiEventHandlerTag, "Got IP in ST: %s", uOpt->wifiStConfig.clientConf.cIpAddr);
 			xEventGroupSetBits(uOpt->stWifiEventGroup, WIFI_CONNECTED_BIT);
+			wifiConnected = TRUE;
 		}
 		break;
 		case SYSTEM_EVENT_STA_DISCONNECTED:
 		{
 			xEventGroupClearBits(uOpt->stWifiEventGroup, WIFI_CONNECTED_BIT);
+			wifiConnected = FALSE;
 			strcpy(wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr,"000.000.000.000");
 			esp_wifi_connect();
 			//ESP_LOGI(wifiEventHandlerTag,"Retrying to connect..!");
@@ -128,7 +118,7 @@ static esp_err_t mqttEventHandler(esp_mqtt_event_handle_t event)
         break;
         case MQTT_EVENT_PUBLISHED:
 		{
-            ESP_LOGI(mqttEventHandlerTag, "MQTT_EVENT_PUBLISHED, msgId=%d", event->msg_id);
+            //ESP_LOGI(mqttEventHandlerTag, "MQTT_EVENT_PUBLISHED, msgId=%d", event->msg_id);
 		}
         break;
         case MQTT_EVENT_DATA:
@@ -239,11 +229,11 @@ static int setDefaultConfig(void)
 	strcpy(meterComConfig.mQryCfg[1].paramName,"Reg_1_Value");
 	
 	/* MQTT */
-	mqttFlowCntrl.enable = mqttFlowCntrl.mqttCfg.enable = FALSE;
-	strcpy(mqttFlowCntrl.mqttCfg.brokerIP,ATNT_BROKER_URL);
-	strcpy(mqttFlowCntrl.mqttCfg.userName,ATNT_API_KEY);
+	mqttFlowCntrl.enable = mqttFlowCntrl.mqttCfg.enable = TRUE;
+	strcpy(mqttFlowCntrl.mqttCfg.brokerIP,MOSQUITTO_BROKER_URL);
+	strcpy(mqttFlowCntrl.mqttCfg.userName,"");
 	strcpy(mqttFlowCntrl.mqttCfg.passWord,"");
-	strcpy(mqttFlowCntrl.mqttCfg.clientId,ATNT_CLIENT_ID);
+	strcpy(mqttFlowCntrl.mqttCfg.clientId,MOSQUITTO_CLIENT_ID);
 	mqttFlowCntrl.mqttCfg.brokerPort = MQTT_PORT;
 
 	/* Display */
@@ -344,7 +334,7 @@ void delayMs(const TickType_t mSec)
 }
 
 /* Task */
-void wifiTask(void *arg)
+void mainTask(void *arg)
 {
 	wifi_ap_record_t ap_info;
 	char timeBuffer[SIZE_32];
@@ -400,16 +390,30 @@ void wifiTask(void *arg)
 			break;
 			case WIFI_STATE_IDLE:
 			{
-				/* Update Display */
+				/* Update Display Basic view */
 				u8g2_ClearBuffer(&dspFlowCntrl.u8g2Handler);
 				setBasicInfo(&dspFlowCntrl);
 				u8g2_DrawLine(&dspFlowCntrl.u8g2Handler, TOP_LINE_S_X_AXIS,TOP_LINE_S_Y_AXIS,TOP_LINE_E_X_AXIS,TOP_LINE_E_Y_AXIS); //Top Line 
 				u8g2_DrawLine(&dspFlowCntrl.u8g2Handler, BOTTOM_LINE_S_X_AXIS,BOTTOM_LINE_S_Y_AXIS,BOTTOM_LINE_E_X_AXIS,BOTTOM_LINE_E_Y_AXIS); //Bottom Line
 				u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, DSP_WIFI_ST_IP_X,DSP_WIFI_ST_IP_Y,wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr);
 
+				/* If Wifi Connected */
 				if( xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & WIFI_CONNECTED_BIT )
 				{
-					/* SNTP-Date and Time Update */
+					/* Wifi Signal Strength Updation */
+					ESP_ERROR_CHECK(esp_wifi_sta_get_ap_info(&ap_info));
+					if( ap_info.rssi >= WIFI_SS_100P ) 																					//100 Percentage
+						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_100_bits);
+					else if( (ap_info.rssi < WIFI_SS_100P) && (ap_info.rssi >= WIFI_SS_75P) ) 											//75 Percentage
+						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_75_bits);
+					else if( (ap_info.rssi < WIFI_SS_75P) && (ap_info.rssi >= WIFI_SS_50P) ) 											//50 Percentage
+						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_50_bits);
+					else if( (ap_info.rssi < WIFI_SS_50P) && (ap_info.rssi >= WIFI_SS_25P) ) 											//25 Percentage
+						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_25_bits);
+					else																												//0 Percentage
+						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_0_bits);
+
+					/* SNTP - Date and Time Update */
 					if( !(xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & TIME_UPDATED_BIT) )
 					{
 						switch(sntpFlowCntrl.state)
@@ -450,37 +454,88 @@ void wifiTask(void *arg)
 							break;
 						}
 					}
-					else
-					{
-						/* Time Update to Display */
-						memset(timeBuffer,0,sizeof(timeBuffer));
-						time(&now);
-						localtime_r(&now, &timeinfo);
-						sprintf(timeBuffer,"%02d:%02d:%02d",timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec);
-						u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, DSP_WIFI_TIME_X,DSP_WIFI_TIME_Y,timeBuffer);
-						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_CLOCK, DSP_Y_AXIS_CLOCK, DSP_CLOCK_W, DSP_CLOCK_H, clock_bits);
-					}
-
-					/* Signal Strength Updation */
-					ESP_ERROR_CHECK(esp_wifi_sta_get_ap_info(&ap_info));
-					if( ap_info.rssi >= WIFI_SS_100P ) 																					//100 Percentage
-						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_100_bits);
-					else if( (ap_info.rssi < WIFI_SS_100P) && (ap_info.rssi >= WIFI_SS_75P) ) 											//75 Percentage
-						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_75_bits);
-					else if( (ap_info.rssi < WIFI_SS_75P) && (ap_info.rssi >= WIFI_SS_50P) ) 											//50 Percentage
-						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_50_bits);
-					else if( (ap_info.rssi < WIFI_SS_50P) && (ap_info.rssi >= WIFI_SS_25P) ) 											//25 Percentage
-						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_25_bits);
-					else																												//0 Percentage
-						u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_SS, DSP_Y_AXIS_SS, DSP_SS_W, DSP_SS_H, wifi_ss_0_bits);
 				}
 
+				/* If Date Time Updated */
+				if( (xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & TIME_UPDATED_BIT) )
+				{
+					/* Time Update to Display */
+					memset(timeBuffer,0,sizeof(timeBuffer));
+					time(&now);
+					localtime_r(&now, &timeinfo);
+					sprintf(timeBuffer,"%02d:%02d:%02d",timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec);
+					u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, DSP_WIFI_TIME_X,DSP_WIFI_TIME_Y,timeBuffer);
+					u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_CLOCK, DSP_Y_AXIS_CLOCK, DSP_CLOCK_W, DSP_CLOCK_H, clock_bits);
+				}
+
+				/* Display Buffer Push */
 				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
-				//delayMs(200);
 				SET_NEXT_WIFI_STATE(WIFI_STATE_IDLE);
 			}
 			break;
 			default: //WIFI_STATE_DO_NOTHIG
+				delayMs(200);
+			break;
+		}
+	}
+}
+
+void mqttTask(void *arg)
+{
+	int msgId = 0;
+
+	ESP_LOGI(mqttTaskTag, "ESP mqtt Task..!");
+	if(mqttFlowCntrl.enable)
+		mqttFlowCntrl.state = MQTT_STATE_INIT;
+	else
+		mqttFlowCntrl.state = MQTT_STATE_DO_NOTHIG;
+
+	while(TRUE)
+	{
+		switch(mqttFlowCntrl.state)
+		{
+			case MQTT_STATE_INIT:
+			{
+				/* FreeRTOS event group to signal when we are connected*/
+				mqttFlowCntrl.mqttEventGroup = xEventGroupCreate();
+
+				setMqttCfg(&mqttFlowCntrl);
+				mqttFlowCntrl.mqttClient = esp_mqtt_client_init(&mqttFlowCntrl.mqttCoreCfg);
+
+				SET_NEXT_MQTT_STATE(MQTT_STATE_CONNECT);
+			}
+			break;
+			case MQTT_STATE_CONNECT:
+			{
+				//if( xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & WIFI_CONNECTED_BIT )
+				if(wifiConnected)
+				{
+					ESP_ERROR_CHECK(esp_mqtt_client_start(mqttFlowCntrl.mqttClient));
+					SET_NEXT_MQTT_STATE(MQTT_STATE_IDLE);
+				}
+				else
+				{
+					delayMs(500);
+					//ESP_LOGI(mqttTaskTag, "Waiting to wifi Connect..");
+					SET_NEXT_MQTT_STATE(MQTT_STATE_CONNECT);
+				}
+			}
+			break;
+			case MQTT_STATE_IDLE:
+			{
+				if( xEventGroupGetBits(mqttFlowCntrl.mqttEventGroup) & MQTT_CONNECTED_BIT )
+				{
+					u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_MQTT, DSP_Y_AXIS_MQTT, DSP_MQTT_W, DSP_MQTT_H, mqtt_bits);
+
+					msgId = esp_mqtt_client_publish(mqttFlowCntrl.mqttClient,"m2x/0569fed2d45691932babd1dccc81e672/requests", atntData, 0, 1, 0);
+					//ESP_LOGI(mqttTaskTag, "Publish initiated.., msgId=%d", msgId);
+				}
+
+				delayMs(2000);
+				SET_NEXT_MQTT_STATE(MQTT_STATE_IDLE);
+			}
+			break;
+			default: // MQTT_STATE_DO_NOTHIG
 				delayMs(200);
 			break;
 		}
@@ -542,63 +597,6 @@ void mUartTask(void *arg)
 			}
 			break;
 			default:	//MOD_STATE_DO_NOTHIG
-				delayMs(200);
-			break;
-		}
-	}
-}
-
-void mqttTask(void *arg)
-{
-	int msgId = 0;
-	
-	ESP_LOGI(mqttTaskTag, "ESP mqtt Task..!");
-	if(mqttFlowCntrl.enable)
-		mqttFlowCntrl.state = MQTT_STATE_INIT;
-	else
-		mqttFlowCntrl.state = MQTT_STATE_DO_NOTHIG;
-	
-	while(TRUE)
-	{
-		switch(mqttFlowCntrl.state)
-		{
-			case MQTT_STATE_INIT:
-			{
-				/* FreeRTOS event group to signal when we are connected*/
-				mqttFlowCntrl.mqttEventGroup = xEventGroupCreate();
-
-				setMqttCfg(&mqttFlowCntrl);
-				mqttFlowCntrl.mqttClient = esp_mqtt_client_init(&mqttFlowCntrl.mqttCoreCfg);
-
-				SET_NEXT_MQTT_STATE(MQTT_STATE_CONNECT);
-			}
-			break;
-			case MQTT_STATE_CONNECT:
-			{
-				if( xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & WIFI_CONNECTED_BIT )
-				{
-					ESP_ERROR_CHECK(esp_mqtt_client_start(mqttFlowCntrl.mqttClient));
-					SET_NEXT_MQTT_STATE(MQTT_STATE_IDLE);
-				}
-				else
-				{
-					delayMs(500);
-					ESP_LOGI(mqttTaskTag, "Waiting to wifi Connect..");
-					SET_NEXT_MQTT_STATE(MQTT_STATE_CONNECT);
-				}
-			}
-			break;
-			case MQTT_STATE_IDLE:
-			{
-				delayMs(2000);
-
-			    msgId = esp_mqtt_client_publish(mqttFlowCntrl.mqttClient, 
-												"m2x/0569fed2d45691932babd1dccc81e672/requests", data, 0, 1, 0);
-				ESP_LOGI(mqttTaskTag, "Publish initiated.., msgId=%d", msgId);
-				SET_NEXT_MQTT_STATE(MQTT_STATE_IDLE);
-			}
-			break;
-			default: // MQTT_STATE_DO_NOTHIG
 				delayMs(200);
 			break;
 		}

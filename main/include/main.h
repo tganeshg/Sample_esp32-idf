@@ -75,6 +75,10 @@
 #define	ATNT_DEVICE_ID			"a0c46778fd7f97ffad8d1a2f12c5d1b1"
 #define	ATNT_CLIENT_ID			"esp32_0001"
 
+/* MQTT Mosquitto free Broker */
+#define	MOSQUITTO_BROKER_URL	"test.mosquitto.org"
+#define	MOSQUITTO_CLIENT_ID		"esp32_0001_2019"
+
 /* Display */
 #define	TOP_LINE_S_X_AXIS		0
 #define TOP_LINE_S_Y_AXIS		17
@@ -101,6 +105,11 @@
 #define DSP_Y_AXIS_CLOCK		19
 #define DSP_CLOCK_W				26
 #define DSP_CLOCK_H				26
+
+#define DSP_X_AXIS_MQTT			62
+#define DSP_Y_AXIS_MQTT			1
+#define DSP_MQTT_W				26
+#define DSP_MQTT_H				26
 
 /*** Enums ***/
 typedef enum
@@ -209,7 +218,7 @@ typedef struct
 
 /*** Functions Declarations ***/
 /* Tasks */
-void wifiTask(void *arg);
+void mainTask(void *arg);
 void mUartTask(void *arg);
 void mqttTask(void *arg);
 void displayTask(void *arg);
