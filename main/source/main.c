@@ -27,7 +27,7 @@ extern MODBUS_CONFIG		modConfig;
 TaskHandle_t				tWifiHandler,tUartHandler,tMqttHandler;
 time_t 						now;
 struct tm 					timeinfo;
-bool 						wifiConnected; //Need to replace with Bit wise flags
+bool 						wifiConnected,mqttConnected; //Need to replace with Bit wise flags
 
 /* Debug Tags */
 static const char	*mainTag = "main ";
@@ -47,11 +47,13 @@ DSP_CFG_FLOW		dspFlowCntrl;
 SNTP_CFG_FLOW		sntpFlowCntrl;
 UART_BASE_CFG		uartCfgFlow;
 
+nBdelayId			mqttPubDelayId;
+
 /* Constants in Structure Variables */
 static const TASK_INFO	taskDetails[TOTAL_TASK] = {
-	{mainTask,"WIFI Task",8192,NULL,1,&tWifiHandler,0},
-	{mqttTask,"MQTT Task",8192,NULL,2,&tMqttHandler,1},
-	{mUartTask,"UART Task",8192,NULL,3,&tUartHandler,1}
+	{mainTask,"WIFI Task",8192,NULL,( 1 | portPRIVILEGE_BIT ),&tWifiHandler,0},
+	{mqttTask,"MQTT Task",8192,NULL,( 1 | portPRIVILEGE_BIT ),&tMqttHandler,1},
+	{mUartTask,"UART Task",8192,NULL,( 1 | portPRIVILEGE_BIT ),&tUartHandler,1}
 	/* Add task info if you want new task and modify 'TOTAL_TASK' */
 };
 
@@ -98,12 +100,14 @@ static esp_err_t mqttEventHandler(esp_mqtt_event_handle_t event)
 		{
             ESP_LOGI(mqttEventHandlerTag, "MQTT Connected to %s",context->mqttCoreCfg.host);
 			xEventGroupSetBits(context->mqttEventGroup, MQTT_CONNECTED_BIT);
+			mqttConnected = TRUE;
 		}
         break;
         case MQTT_EVENT_DISCONNECTED:
 		{
 			ESP_LOGI(mqttEventHandlerTag,"MQTT Disconnected from %s",context->mqttCoreCfg.host);
 			xEventGroupClearBits(context->mqttEventGroup, MQTT_CONNECTED_BIT);
+			mqttConnected = FALSE;
 		}
 		break;
         case MQTT_EVENT_SUBSCRIBED:
@@ -118,7 +122,7 @@ static esp_err_t mqttEventHandler(esp_mqtt_event_handle_t event)
         break;
         case MQTT_EVENT_PUBLISHED:
 		{
-            //ESP_LOGI(mqttEventHandlerTag, "MQTT_EVENT_PUBLISHED, msgId=%d", event->msg_id);
+            ESP_LOGI(mqttEventHandlerTag, "MQTT_EVENT_PUBLISHED, msgId=%d", event->msg_id);
 		}
         break;
         case MQTT_EVENT_DATA:
@@ -328,6 +332,23 @@ int taskInit(void)
 	return RET_OK;
 }
 
+int	nBdelay(nBdelayId *dId,uint64_t dlMs)
+{
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+	dId->eSec = (tv.tv_sec * 1000LL + (tv.tv_usec / 1000LL));
+
+	if(!dlMs)
+		dId->sSec = dId->eSec;
+	else
+	{
+		if( (dId->eSec - dId->sSec) > dlMs)
+			return TRUE;
+	}
+	return FALSE;
+}
+
 void delayMs(const TickType_t mSec)
 {
 	vTaskDelay(mSec / portTICK_RATE_MS);
@@ -463,11 +484,15 @@ void mainTask(void *arg)
 					memset(timeBuffer,0,sizeof(timeBuffer));
 					time(&now);
 					localtime_r(&now, &timeinfo);
-					sprintf(timeBuffer,"%02d:%02d:%02d",timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec);
+					sprintf(timeBuffer,"Time %02d:%02d:%02d",timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec);
 					u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, DSP_WIFI_TIME_X,DSP_WIFI_TIME_Y,timeBuffer);
-					u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_CLOCK, DSP_Y_AXIS_CLOCK, DSP_CLOCK_W, DSP_CLOCK_H, clock_bits);
 				}
 
+				/* Display Buffer Push */
+				if(mqttConnected)
+				{
+					u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_MQTT, DSP_Y_AXIS_MQTT, DSP_MQTT_W, DSP_MQTT_H, mqtt_bits);
+				}
 				/* Display Buffer Push */
 				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
 				SET_NEXT_WIFI_STATE(WIFI_STATE_IDLE);
@@ -525,13 +550,11 @@ void mqttTask(void *arg)
 			{
 				if( xEventGroupGetBits(mqttFlowCntrl.mqttEventGroup) & MQTT_CONNECTED_BIT )
 				{
-					u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_MQTT, DSP_Y_AXIS_MQTT, DSP_MQTT_W, DSP_MQTT_H, mqtt_bits);
-
-					msgId = esp_mqtt_client_publish(mqttFlowCntrl.mqttClient,"m2x/0569fed2d45691932babd1dccc81e672/requests", atntData, 0, 1, 0);
-					//ESP_LOGI(mqttTaskTag, "Publish initiated.., msgId=%d", msgId);
+					msgId = esp_mqtt_client_publish(mqttFlowCntrl.mqttClient,"m2x/test/requests", atntData, 0, 1, 0);
+					ESP_LOGI(mqttTaskTag, "Publish initiated.., msgId=%d", msgId);
 				}
 
-				delayMs(2000);
+				delayMs(1000);
 				SET_NEXT_MQTT_STATE(MQTT_STATE_IDLE);
 			}
 			break;

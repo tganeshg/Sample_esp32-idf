@@ -98,16 +98,11 @@
 #define DSP_WIFI_ST_IP_X		1
 #define DSP_WIFI_ST_IP_Y		14
 
-#define DSP_WIFI_TIME_X			28
-#define DSP_WIFI_TIME_Y			43
+#define DSP_WIFI_TIME_X			1
+#define DSP_WIFI_TIME_Y			62
 
-#define DSP_X_AXIS_CLOCK		1
-#define DSP_Y_AXIS_CLOCK		19
-#define DSP_CLOCK_W				26
-#define DSP_CLOCK_H				26
-
-#define DSP_X_AXIS_MQTT			62
-#define DSP_Y_AXIS_MQTT			1
+#define DSP_X_AXIS_MQTT			1
+#define DSP_Y_AXIS_MQTT			19
 #define DSP_MQTT_W				26
 #define DSP_MQTT_H				26
 
@@ -151,6 +146,14 @@ typedef enum
 }SNTP_STATES;
 
 /*** Structures ***/
+
+/* General */
+typedef struct
+{
+	uint64_t	sSec;
+	uint64_t	eSec;
+}nBdelayId;
+
 /* Task */
 typedef struct
 {
@@ -224,7 +227,8 @@ void mqttTask(void *arg);
 void displayTask(void *arg);
 
 /* Public functions */
-void delayMs(const TickType_t mSec);
+void delayMs(const TickType_t mSec); // Blocking
+int	nBdelay(nBdelayId *dId,uint64_t dlMs); //Non Blocking
 
 /* uart.c */
 int uartInit(UART_BASE_CFG * uCfgFlw);
