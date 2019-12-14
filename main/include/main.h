@@ -31,6 +31,7 @@
 #include "lwip/netdb.h"
 #include "lwip/apps/sntp.h"
 #include "mqtt_client.h"
+#include "esp_system.h"
 #include "cJSON.h"
 
 #include "common.h"
@@ -71,7 +72,7 @@
 
 /* MQTT Cloud - AT&T */
 #define	ATNT_BROKER_URL			"api-m2x.att.com"
-#define	ATNT_API_KEY			"0569fed2d45691932babd1dccc81e672"
+#define	ATNT_API_KEY			"5ddc15fa702eb039c7b05d182d8fb6ef"
 #define	ATNT_DEVICE_ID			"a0c46778fd7f97ffad8d1a2f12c5d1b1"
 #define	ATNT_CLIENT_ID			"esp32_0001"
 
@@ -218,6 +219,23 @@ typedef struct
 	char						ntpServer[SIZE_64];
 	SNTP_STATES					state;
 }SNTP_CFG_FLOW;
+
+/* IPC */
+typedef struct
+{
+	uint8_t	pBuffer[SIZE_4096]; //payload buffer
+	uint8_t	pTopic[SIZE_128];	//topic
+	int		pLen;				//payload length
+	int		pQos;				//QOS	
+	int		pRetain;			//Retain flag
+}MQTT_PAYLOADER;
+/* Data or Values transfer among tasks */
+typedef struct
+{
+	bool 			wifiConnected;
+	bool 			mqttConnected;
+	MQTT_PAYLOADER	mqttPayload;
+}IPC_COMM;
 
 /*** Functions Declarations ***/
 /* Tasks */

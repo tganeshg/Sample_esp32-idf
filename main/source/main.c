@@ -27,7 +27,6 @@ extern MODBUS_CONFIG		modConfig;
 TaskHandle_t				tWifiHandler,tUartHandler,tMqttHandler;
 time_t 						now;
 struct tm 					timeinfo;
-bool 						wifiConnected,mqttConnected; //Need to replace with Bit wise flags
 
 /* Debug Tags */
 static const char	*mainTag = "main ";
@@ -48,6 +47,8 @@ SNTP_CFG_FLOW		sntpFlowCntrl;
 UART_BASE_CFG		uartCfgFlow;
 
 nBdelayId			mqttPubDelayId;
+
+IPC_COMM			ipcCommArea;
 
 /* Constants in Structure Variables */
 static const TASK_INFO	taskDetails[TOTAL_TASK] = {
@@ -72,13 +73,13 @@ static esp_err_t wifiEventHandler(void *ctx, system_event_t *event)
 			strcpy(uOpt->wifiStConfig.clientConf.cIpAddr,ip4addr_ntoa(&event->event_info.got_ip.ip_info.ip));
 			ESP_LOGI(wifiEventHandlerTag, "Got IP in ST: %s", uOpt->wifiStConfig.clientConf.cIpAddr);
 			xEventGroupSetBits(uOpt->stWifiEventGroup, WIFI_CONNECTED_BIT);
-			wifiConnected = TRUE;
+			ipcCommArea.wifiConnected = TRUE;
 		}
 		break;
 		case SYSTEM_EVENT_STA_DISCONNECTED:
 		{
 			xEventGroupClearBits(uOpt->stWifiEventGroup, WIFI_CONNECTED_BIT);
-			wifiConnected = FALSE;
+			ipcCommArea.wifiConnected = FALSE;
 			strcpy(wifiFlowCntrl.wifiStConfig.clientConf.cIpAddr,"000.000.000.000");
 			esp_wifi_connect();
 			//ESP_LOGI(wifiEventHandlerTag,"Retrying to connect..!");
@@ -100,14 +101,14 @@ static esp_err_t mqttEventHandler(esp_mqtt_event_handle_t event)
 		{
             ESP_LOGI(mqttEventHandlerTag, "MQTT Connected to %s",context->mqttCoreCfg.host);
 			xEventGroupSetBits(context->mqttEventGroup, MQTT_CONNECTED_BIT);
-			mqttConnected = TRUE;
+			ipcCommArea.mqttConnected = TRUE;
 		}
         break;
         case MQTT_EVENT_DISCONNECTED:
 		{
 			ESP_LOGI(mqttEventHandlerTag,"MQTT Disconnected from %s",context->mqttCoreCfg.host);
 			xEventGroupClearBits(context->mqttEventGroup, MQTT_CONNECTED_BIT);
-			mqttConnected = FALSE;
+			ipcCommArea.mqttConnected = FALSE;
 		}
 		break;
         case MQTT_EVENT_SUBSCRIBED:
@@ -234,10 +235,10 @@ static int setDefaultConfig(void)
 	
 	/* MQTT */
 	mqttFlowCntrl.enable = mqttFlowCntrl.mqttCfg.enable = TRUE;
-	strcpy(mqttFlowCntrl.mqttCfg.brokerIP,MOSQUITTO_BROKER_URL);
-	strcpy(mqttFlowCntrl.mqttCfg.userName,"");
+	strcpy(mqttFlowCntrl.mqttCfg.brokerIP,ATNT_BROKER_URL);
+	strcpy(mqttFlowCntrl.mqttCfg.userName,ATNT_API_KEY);
 	strcpy(mqttFlowCntrl.mqttCfg.passWord,"");
-	strcpy(mqttFlowCntrl.mqttCfg.clientId,MOSQUITTO_CLIENT_ID);
+	strcpy(mqttFlowCntrl.mqttCfg.clientId,ATNT_CLIENT_ID);
 	mqttFlowCntrl.mqttCfg.brokerPort = MQTT_PORT;
 
 	/* Display */
@@ -456,8 +457,8 @@ void mainTask(void *arg)
 								else
 								{
 									// Set timezone to Eastern Standard Time and print local time
-									setenv("TZ","GMT -5:30", 1);
-									tzset();
+									/* setenv("TZ","GMT -5:30", 1);
+									tzset(); */
 									time(&now);
 									localtime_r(&now, &timeinfo);
 									ESP_LOGI(wifiTaskTag, "Obtained Time : %02d/%02d/%04d %02d:%02d:%02d",	timeinfo.tm_mday,
@@ -489,7 +490,7 @@ void mainTask(void *arg)
 				}
 
 				/* Display Buffer Push */
-				if(mqttConnected)
+				if(ipcCommArea.mqttConnected)
 				{
 					u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_MQTT, DSP_Y_AXIS_MQTT, DSP_MQTT_W, DSP_MQTT_H, mqtt_bits);
 				}
@@ -508,6 +509,7 @@ void mainTask(void *arg)
 void mqttTask(void *arg)
 {
 	int msgId = 0;
+	char buffer[SIZE_64]={0};
 
 	ESP_LOGI(mqttTaskTag, "ESP mqtt Task..!");
 	if(mqttFlowCntrl.enable)
@@ -533,7 +535,7 @@ void mqttTask(void *arg)
 			case MQTT_STATE_CONNECT:
 			{
 				//if( xEventGroupGetBits(wifiFlowCntrl.stWifiEventGroup) & WIFI_CONNECTED_BIT )
-				if(wifiConnected)
+				if(ipcCommArea.wifiConnected)
 				{
 					ESP_ERROR_CHECK(esp_mqtt_client_start(mqttFlowCntrl.mqttClient));
 					SET_NEXT_MQTT_STATE(MQTT_STATE_IDLE);
@@ -550,11 +552,21 @@ void mqttTask(void *arg)
 			{
 				if( xEventGroupGetBits(mqttFlowCntrl.mqttEventGroup) & MQTT_CONNECTED_BIT )
 				{
-					msgId = esp_mqtt_client_publish(mqttFlowCntrl.mqttClient,"m2x/test/requests", atntData, 0, 1, 0);
+					time(&now);
+					localtime_r(&now, &timeinfo);
+					strftime(buffer,SIZE_64,"%FT%TZ",&timeinfo);
+					sprintf((char *)ipcCommArea.mqttPayload.pTopic,"m2x/%s/requests",ATNT_API_KEY);
+					sprintf((char *)ipcCommArea.mqttPayload.pBuffer,atntData,buffer,esp_random());
+					/* ESP_LOGI(mqttTaskTag, "Publish topic %s",ipcCommArea.mqttPayload.pTopic);
+					ESP_LOGI(mqttTaskTag, "Publish payload %s",ipcCommArea.mqttPayload.pBuffer); */
+
+					msgId = esp_mqtt_client_publish( mqttFlowCntrl.mqttClient,
+													 (const char *)ipcCommArea.mqttPayload.pTopic, 
+													 (const char *)ipcCommArea.mqttPayload.pBuffer, 0, 1, 0);
 					ESP_LOGI(mqttTaskTag, "Publish initiated.., msgId=%d", msgId);
 				}
 
-				delayMs(1000);
+				delayMs(5000);
 				SET_NEXT_MQTT_STATE(MQTT_STATE_IDLE);
 			}
 			break;
