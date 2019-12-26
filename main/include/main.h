@@ -51,6 +51,7 @@
 #define	WIFI_SS_25P				-80
 #define	WIFI_SS_0P				-90
 
+#define	APPLY_INDIAN_TIME_ZONE	FALSE
 #define	INDIAN_NTP_SERVER		"0.in.pool.ntp.org"
 /* Increment while adding new task */
 #define TOTAL_TASK				3

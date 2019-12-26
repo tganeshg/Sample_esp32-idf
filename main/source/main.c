@@ -456,9 +456,11 @@ void mainTask(void *arg)
 								}
 								else
 								{
-									// Set timezone to Eastern Standard Time and print local time
-									/* setenv("TZ","GMT -5:30", 1);
-									tzset(); */
+#if APPLY_INDIAN_TIME_ZONE
+									// Set timezone to Eastern Standard Time and print local time.
+									setenv("TZ","GMT -5:30", 1);
+									tzset();
+#endif
 									time(&now);
 									localtime_r(&now, &timeinfo);
 									ESP_LOGI(wifiTaskTag, "Obtained Time : %02d/%02d/%04d %02d:%02d:%02d",	timeinfo.tm_mday,
