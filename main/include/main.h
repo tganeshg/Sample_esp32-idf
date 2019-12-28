@@ -122,6 +122,11 @@
 #define DSP_MQTT_W				26
 #define DSP_MQTT_H				26
 
+#define DSP_X_AXIS_MQTT_PUB		28
+#define DSP_Y_AXIS_MQTT_PUB		19
+#define DSP_MQTT_PUB_W			26
+#define DSP_MQTT_PUB_H			26
+
 /*** Enums ***/
 typedef enum
 {
@@ -243,6 +248,8 @@ typedef struct
 	int		pLen;				//payload length
 	int		pQos;				//QOS	
 	int		pRetain;			//Retain flag
+	int		pMsgId;				//Fill message id while initiate the publish
+	bool	pDataLoaded;		//If payload is ready, this flag will set,After publish clear it.
 }MQTT_PAYLOADER;
 /* Data or Values transfer among tasks */
 typedef struct

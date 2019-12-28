@@ -124,6 +124,7 @@ static esp_err_t mqttEventHandler(esp_mqtt_event_handle_t event)
         case MQTT_EVENT_PUBLISHED:
 		{
             ESP_LOGI(mqttEventHandlerTag, "MQTT_EVENT_PUBLISHED, msgId=%d", event->msg_id);
+			ipcCommArea.mqttPayload.pDataLoaded = FALSE; //Published
 		}
         break;
         case MQTT_EVENT_DATA:
@@ -491,11 +492,18 @@ void mainTask(void *arg)
 					u8g2_DrawStr(&dspFlowCntrl.u8g2Handler, DSP_WIFI_TIME_X,DSP_WIFI_TIME_Y,timeBuffer);
 				}
 
-				/* Display Buffer Push */
+				/* If MQTT Broker Connected */
 				if(ipcCommArea.mqttConnected)
 				{
 					u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_MQTT, DSP_Y_AXIS_MQTT, DSP_MQTT_W, DSP_MQTT_H, mqtt_bits);
 				}
+
+				/* If MQTT payload publish initiated */
+				if(ipcCommArea.mqttPayload.pDataLoaded)
+				{
+					u8g2_DrawXBM(&dspFlowCntrl.u8g2Handler, DSP_X_AXIS_MQTT_PUB, DSP_Y_AXIS_MQTT_PUB, DSP_MQTT_PUB_W, DSP_MQTT_PUB_H, mqtt_publish_bits);
+				}
+
 				/* Display Buffer Push */
 				u8g2_SendBuffer(&dspFlowCntrl.u8g2Handler);
 				SET_NEXT_WIFI_STATE(WIFI_STATE_IDLE);
@@ -510,7 +518,6 @@ void mainTask(void *arg)
 
 void mqttTask(void *arg)
 {
-	int msgId = 0;
 	char buffer[SIZE_64]={0};
 
 	ESP_LOGI(mqttTaskTag, "ESP mqtt Task..!");
@@ -566,16 +573,21 @@ void mqttTask(void *arg)
 					sprintf((char *)ipcCommArea.mqttPayload.pTopic,mosquittoTopic,MQTT_CLIENT_ID);
 					sprintf((char *)ipcCommArea.mqttPayload.pBuffer,mosquittoData,buffer,esp_random());
 #endif
-					ESP_LOGI(mqttTaskTag, "Publish topic %s",ipcCommArea.mqttPayload.pTopic);
-					ESP_LOGI(mqttTaskTag, "Publish payload %s",ipcCommArea.mqttPayload.pBuffer);
+					ipcCommArea.mqttPayload.pDataLoaded = TRUE;
+					/* ESP_LOGI(mqttTaskTag, "Publish topic %s",ipcCommArea.mqttPayload.pTopic);
+					ESP_LOGI(mqttTaskTag, "Publish payload %s",ipcCommArea.mqttPayload.pBuffer); */
 
-					msgId = esp_mqtt_client_publish( mqttFlowCntrl.mqttClient,
-													 (const char *)ipcCommArea.mqttPayload.pTopic, 
-													 (const char *)ipcCommArea.mqttPayload.pBuffer, 0, 1, 0);
-					ESP_LOGI(mqttTaskTag, "Publish initiated.., msgId=%d", msgId);
+					if(ipcCommArea.mqttPayload.pDataLoaded)
+					{
+						//ipcCommArea.mqttPayload.pDataLoaded = FALSE;
+						ipcCommArea.mqttPayload.pMsgId = esp_mqtt_client_publish( mqttFlowCntrl.mqttClient,
+														(const char *)ipcCommArea.mqttPayload.pTopic, 
+														(const char *)ipcCommArea.mqttPayload.pBuffer, 0, 1, 0);
+						ESP_LOGI(mqttTaskTag, "Publish initiated.., msgId=%d\n", ipcCommArea.mqttPayload.pMsgId);
+					}
 				}
 
-				delayMs(5000);
+				delayMs(1000);
 				SET_NEXT_MQTT_STATE(MQTT_STATE_IDLE);
 			}
 			break;
