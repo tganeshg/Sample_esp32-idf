@@ -234,11 +234,11 @@ static int setDefaultConfig(void)
 	strcpy(meterComConfig.mQryCfg[1].paramName,"Reg_1_Value");
 	
 	/* MQTT */
-	mqttFlowCntrl.enable = mqttFlowCntrl.mqttCfg.enable = TRUE;
-	strcpy(mqttFlowCntrl.mqttCfg.brokerIP,ATNT_BROKER_URL);
-	strcpy(mqttFlowCntrl.mqttCfg.userName,ATNT_API_KEY);
-	strcpy(mqttFlowCntrl.mqttCfg.passWord,"");
-	strcpy(mqttFlowCntrl.mqttCfg.clientId,ATNT_CLIENT_ID);
+	mqttFlowCntrl.enable = mqttFlowCntrl.mqttCfg.enable = MQTT_ENABLE;
+	strcpy(mqttFlowCntrl.mqttCfg.brokerIP,MQTT_BROKER_URL_IP);
+	strcpy(mqttFlowCntrl.mqttCfg.userName,MQTT_USERNAME);
+	strcpy(mqttFlowCntrl.mqttCfg.passWord,MQTT_PASSWORD);
+	strcpy(mqttFlowCntrl.mqttCfg.clientId,MQTT_CLIENT_ID);
 	mqttFlowCntrl.mqttCfg.brokerPort = MQTT_PORT;
 
 	/* Display */
@@ -556,11 +556,18 @@ void mqttTask(void *arg)
 				{
 					time(&now);
 					localtime_r(&now, &timeinfo);
-					strftime(buffer,SIZE_64,"%FT%TZ",&timeinfo);
-					sprintf((char *)ipcCommArea.mqttPayload.pTopic,"m2x/%s/requests",ATNT_API_KEY);
+					memset(buffer,0,sizeof(buffer));
+#if (MQTT_BROKER == ATNT_BROKER)
+					strftime(buffer,sizeof(buffer),"%FT%TZ",&timeinfo);
+					sprintf((char *)ipcCommArea.mqttPayload.pTopic,atntTopic,ATNT_API_KEY);
 					sprintf((char *)ipcCommArea.mqttPayload.pBuffer,atntData,buffer,esp_random());
-					/* ESP_LOGI(mqttTaskTag, "Publish topic %s",ipcCommArea.mqttPayload.pTopic);
-					ESP_LOGI(mqttTaskTag, "Publish payload %s",ipcCommArea.mqttPayload.pBuffer); */
+#else
+					strftime(buffer,sizeof(buffer),"%F %T",&timeinfo);
+					sprintf((char *)ipcCommArea.mqttPayload.pTopic,mosquittoTopic,MQTT_CLIENT_ID);
+					sprintf((char *)ipcCommArea.mqttPayload.pBuffer,mosquittoData,buffer,esp_random());
+#endif
+					ESP_LOGI(mqttTaskTag, "Publish topic %s",ipcCommArea.mqttPayload.pTopic);
+					ESP_LOGI(mqttTaskTag, "Publish payload %s",ipcCommArea.mqttPayload.pBuffer);
 
 					msgId = esp_mqtt_client_publish( mqttFlowCntrl.mqttClient,
 													 (const char *)ipcCommArea.mqttPayload.pTopic, 

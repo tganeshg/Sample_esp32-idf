@@ -51,7 +51,6 @@
 #define	WIFI_SS_25P				-80
 #define	WIFI_SS_0P				-90
 
-#define	APPLY_INDIAN_TIME_ZONE	FALSE
 #define	INDIAN_NTP_SERVER		"0.in.pool.ntp.org"
 /* Increment while adding new task */
 #define TOTAL_TASK				3
@@ -65,21 +64,36 @@
 #define TIME_UPDATED_BIT		BIT1
 
 	/* MQTT */
-#define MQTT_CONNECTED_BIT		BIT0
+#define	MQTT_ENABLE				TRUE
 #define MQTT_PORT				1883
+#define MQTT_CONNECTED_BIT		BIT0
 
-/* MQTT Cloud - Ganesh */
-#define	GAN_BROKER_URL			"162.255.87.22"
+/* MQTT Mosquitto free Broker */
+#define	TEST_MOSQUITTO_ORG		0
+#define	MOSQUITTO_BROKER_URL	"test.mosquitto.org"
+#define	MOSQUITTO_CLIENT_ID		"esp32_0001_2019"
 
 /* MQTT Cloud - AT&T */
+#define	ATNT_BROKER				1
 #define	ATNT_BROKER_URL			"api-m2x.att.com"
 #define	ATNT_API_KEY			"5ddc15fa702eb039c7b05d182d8fb6ef"
 #define	ATNT_DEVICE_ID			"a0c46778fd7f97ffad8d1a2f12c5d1b1"
 #define	ATNT_CLIENT_ID			"esp32_0001"
 
-/* MQTT Mosquitto free Broker */
-#define	MOSQUITTO_BROKER_URL	"test.mosquitto.org"
-#define	MOSQUITTO_CLIENT_ID		"esp32_0001_2019"
+#define	MQTT_BROKER					TEST_MOSQUITTO_ORG
+#if (MQTT_BROKER == ATNT_BROKER)
+	#define	APPLY_INDIAN_TIME_ZONE	FALSE
+	#define	MQTT_BROKER_URL_IP		ATNT_BROKER_URL
+	#define	MQTT_CLIENT_ID			ATNT_CLIENT_ID
+	#define	MQTT_USERNAME			ATNT_API_KEY
+	#define	MQTT_PASSWORD			""
+#else
+	#define	APPLY_INDIAN_TIME_ZONE	TRUE
+	#define	MQTT_BROKER_URL_IP		MOSQUITTO_BROKER_URL
+	#define	MQTT_CLIENT_ID			MOSQUITTO_CLIENT_ID
+	#define	MQTT_USERNAME			""
+	#define	MQTT_PASSWORD			""
+#endif
 
 /* Display */
 #define	TOP_LINE_S_X_AXIS		0
