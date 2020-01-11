@@ -33,6 +33,8 @@
 #include "mqtt_client.h"
 #include "esp_system.h"
 #include "cJSON.h"
+#include "sodium.h"
+#include "dht.h"
 
 #include "common.h"
 #include "deviceConfig.h"
@@ -53,7 +55,7 @@
 
 #define	INDIAN_NTP_SERVER		"0.in.pool.ntp.org"
 /* Increment while adding new task */
-#define TOTAL_TASK				3
+#define TOTAL_TASK				4
 
 /* Uart Tx and Rx Buffer size */
 #define	UART_BUF_SIZE			512
@@ -65,6 +67,7 @@
 
 	/* MQTT */
 #define	MQTT_ENABLE				TRUE
+#define	MQTT_ENCRYPT_ENABLE		TRUE
 #define MQTT_PORT				1883
 #define MQTT_CONNECTED_BIT		BIT0
 
@@ -243,19 +246,29 @@ typedef struct
 /* IPC */
 typedef struct
 {
+    int16_t temperature;
+    int16_t humidity;
+}TEMP_SENSOR;
+
+typedef struct
+{
+#if MQTT_ENCRYPT_ENABLE
+	uint8_t	pEncryptBuffer[SIZE_4096 + crypto_secretbox_MACBYTES]; //payload buffer (libsodium Encrypted)
+#endif
 	uint8_t	pBuffer[SIZE_4096]; //payload buffer
-	uint8_t	pTopic[SIZE_128];	//topic
-	int		pLen;				//payload length
-	int		pQos;				//QOS	
-	int		pRetain;			//Retain flag
-	int		pMsgId;				//Fill message id while initiate the publish
-	bool	pDataLoaded;		//If payload is ready, this flag will set,After publish clear it.
+	uint8_t	pTopic[SIZE_128];								//topic
+	int		pLen;											//payload length
+	int		pQos;											//QOS
+	int		pRetain;										//Retain flag
+	int		pMsgId;											//Fill message id while initiate the publish
+	bool	pDataLoaded;									//If payload is ready, this flag will set,After publish clear it.
 }MQTT_PAYLOADER;
 /* Data or Values transfer among tasks */
 typedef struct
 {
 	bool 			wifiConnected;
 	bool 			mqttConnected;
+	TEMP_SENSOR		tempSenData;
 	MQTT_PAYLOADER	mqttPayload;
 }IPC_COMM;
 
@@ -265,6 +278,7 @@ void mainTask(void *arg);
 void mUartTask(void *arg);
 void mqttTask(void *arg);
 void displayTask(void *arg);
+void dhtTest(void *arg);
 
 /* Public functions */
 void delayMs(const TickType_t mSec); // Blocking

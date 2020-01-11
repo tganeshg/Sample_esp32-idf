@@ -24,9 +24,13 @@ extern MODBUS_COM_CONFIG	meterComConfig;
 extern MODBUS_CONFIG		modConfig;
 	
 /*** Globals ***/
-TaskHandle_t				tWifiHandler,tUartHandler,tMqttHandler;
+TaskHandle_t				tWifiHandler,tUartHandler,tMqttHandler,tDhtHandler;
 time_t 						now;
 struct tm 					timeinfo;
+
+/* DHT11 */
+static const dht_sensor_type_t sensorType = DHT_TYPE_DHT11;
+static const gpio_num_t dhtGpio = GPIO_NUM_21;
 
 /* Debug Tags */
 static const char	*mainTag = "main ";
@@ -37,6 +41,8 @@ static const char	*wifiTaskTag = "mainTask ";
 static const char	*uartTaskTag = "mUartTask ";
 static const char	*mqttTaskTag = "mqttTask ";
 static const char	*mqttEventHandlerTag = "mqttEventHandler ";
+static const char	*encryptMsgTag = "mainTask ";
+static const char	*dhtTestTaskTag = "dhtTestTask ";
 
 /*** Structure Variables ***/
 WIFI_CFG_FLOW		wifiFlowCntrl;		
@@ -54,7 +60,8 @@ IPC_COMM			ipcCommArea;
 static const TASK_INFO	taskDetails[TOTAL_TASK] = {
 	{mainTask,"WIFI Task",8192,NULL,( 1 | portPRIVILEGE_BIT ),&tWifiHandler,0},
 	{mqttTask,"MQTT Task",8192,NULL,( 1 | portPRIVILEGE_BIT ),&tMqttHandler,1},
-	{mUartTask,"UART Task",8192,NULL,( 1 | portPRIVILEGE_BIT ),&tUartHandler,1}
+	{mUartTask,"UART Task",8192,NULL,( 1 | portPRIVILEGE_BIT ),&tUartHandler,1},
+	{dhtTest,"DHT Task",8192,NULL,( 1 | portPRIVILEGE_BIT ),&tDhtHandler,1}
 	/* Add task info if you want new task and modify 'TOTAL_TASK' */
 };
 
@@ -314,6 +321,39 @@ static int initDisplay(DSP_CFG_FLOW *dspInitFlow)
 	return RET_OK;
 }
 
+#if MQTT_ENCRYPT_ENABLE
+static int encryptMsg(const unsigned char *msg,unsigned long long msgLen,unsigned char *ciphertext)
+{
+	unsigned char nonce[crypto_secretbox_NONCEBYTES]="nonce";
+	unsigned char key[crypto_secretbox_KEYBYTES]="key";
+
+	/* Generate a secure random key and nonce */
+	//randombytes_buf(nonce, sizeof(nonce));
+	//randombytes_buf(key, sizeof(key));
+
+	/* Encrypt the message with the given nonce and key, putting the result in ciphertext */
+	if(crypto_secretbox_easy(ciphertext, msg, msgLen, nonce, key) < 0)
+	{
+		ESP_LOGI(encryptMsgTag, "MQTT Payload encrypt failed..!");
+		return FALSE;
+	}
+
+#if 0
+	unsigned char decrypted[SIZE_4096];
+	if (crypto_secretbox_open_easy(decrypted, ciphertext, (SIZE_4096 + crypto_secretbox_MACBYTES), nonce, key) != 0)
+	{
+		/* If we get here, the Message was a forgery. This means someone (or the network) somehow tried to tamper with the message*/
+		ESP_LOGI(encryptMsgTag,">>>>>>> Error\n");
+	}
+	else
+	{
+		ESP_LOGI(encryptMsgTag,">>>>>>> %s\n",decrypted);
+	}
+#endif
+	return TRUE;
+}
+#endif
+
 /* Public */
 int taskInit(void)
 {
@@ -571,9 +611,18 @@ void mqttTask(void *arg)
 #else
 					strftime(buffer,sizeof(buffer),"%F %T",&timeinfo);
 					sprintf((char *)ipcCommArea.mqttPayload.pTopic,mosquittoTopic,MQTT_CLIENT_ID);
-					sprintf((char *)ipcCommArea.mqttPayload.pBuffer,mosquittoData,buffer,esp_random());
-#endif
+					sprintf((char *)ipcCommArea.mqttPayload.pBuffer,mosquittoData,buffer,
+																	ipcCommArea.tempSenData.temperature,
+																	ipcCommArea.tempSenData.humidity);
 					ipcCommArea.mqttPayload.pDataLoaded = TRUE;
+#if MQTT_ENCRYPT_ENABLE
+					ipcCommArea.mqttPayload.pDataLoaded = encryptMsg(	(const unsigned char *)ipcCommArea.mqttPayload.pBuffer,
+																		(unsigned long long)sizeof(ipcCommArea.mqttPayload.pBuffer),
+																		(unsigned char *)ipcCommArea.mqttPayload.pEncryptBuffer);
+
+#endif
+
+#endif
 					/* ESP_LOGI(mqttTaskTag, "Publish topic %s",ipcCommArea.mqttPayload.pTopic);
 					ESP_LOGI(mqttTaskTag, "Publish payload %s",ipcCommArea.mqttPayload.pBuffer); */
 
@@ -582,7 +631,17 @@ void mqttTask(void *arg)
 						//ipcCommArea.mqttPayload.pDataLoaded = FALSE;
 						ipcCommArea.mqttPayload.pMsgId = esp_mqtt_client_publish( mqttFlowCntrl.mqttClient,
 														(const char *)ipcCommArea.mqttPayload.pTopic, 
-														(const char *)ipcCommArea.mqttPayload.pBuffer, 0, 1, 0);
+#if MQTT_ENCRYPT_ENABLE
+														(const char *)ipcCommArea.mqttPayload.pEncryptBuffer,
+#else
+														(const char *)ipcCommArea.mqttPayload.pBuffer,
+#endif
+#if MQTT_ENCRYPT_ENABLE
+														(SIZE_4096 + crypto_secretbox_MACBYTES),
+#else
+														0,
+#endif
+														1, 0);
 						ESP_LOGI(mqttTaskTag, "Publish initiated.., msgId=%d\n", ipcCommArea.mqttPayload.pMsgId);
 					}
 				}
@@ -657,6 +716,37 @@ void mUartTask(void *arg)
 			break;
 		}
 	}
+}
+
+void dhtTest(void *arg)
+{
+    // DHT sensors that come mounted on a PCB generally have
+    // pull-up resistors on the data pin.  It is recommended
+    // to provide an external pull-up resistor otherwise...
+
+    //gpio_set_pull_mode(dht_gpio, GPIO_PULLUP_ONLY);
+
+    while(TRUE)
+    {
+		if(ipcCommArea.wifiConnected)
+		{
+			if(dht_read_data(sensorType, dhtGpio, &ipcCommArea.tempSenData.humidity, &ipcCommArea.tempSenData.temperature) == ESP_OK)
+			{
+				ipcCommArea.tempSenData.humidity = ipcCommArea.tempSenData.humidity / 10;
+				ipcCommArea.tempSenData.temperature = ipcCommArea.tempSenData.temperature / 10;
+				//ESP_LOGI(dhtTestTaskTag, "Humidity: %d Temp: %d\n", ipcCommArea.tempSenData.humidity, ipcCommArea.tempSenData.temperature);
+			}
+			else
+			{
+				ipcCommArea.tempSenData.humidity = 0;
+				ipcCommArea.tempSenData.temperature = 0;
+				ESP_LOGI(dhtTestTaskTag, "Could not read data from sensor\n");
+			}
+		}
+        // If you read the sensor data too often, it will heat up
+        // http://www.kandrsmith.org/RJS/Misc/Hygrometers/dht_sht_how_fast.html
+        delayMs(2000);
+    }
 }
 
 /* Main */

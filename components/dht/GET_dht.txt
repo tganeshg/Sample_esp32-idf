@@ -1,0 +1,3 @@
+https://github.com/UncleRus/esp-idf-lib
+
+https://components101.com/dht11-temperature-sensor
