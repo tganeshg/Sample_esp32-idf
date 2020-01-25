@@ -44,6 +44,8 @@
 /*** Macros ***/
 
 /* WIFI Credentials */
+#define ESP_SERIAL_NO			"ESP32_0001"
+
 #define WIFI_SSID				"ganesh"
 #define WIFI_PASSWD				"ganesh@234"
 
@@ -256,7 +258,7 @@ typedef struct
 	uint8_t	pEncryptBuffer[SIZE_4096 + crypto_secretbox_MACBYTES]; //payload buffer (libsodium Encrypted)
 #endif
 	uint8_t	pBuffer[SIZE_4096]; //payload buffer
-	uint8_t	pTopic[SIZE_128];								//topic
+	char	pTopic[SIZE_128];								//topic
 	int		pLen;											//payload length
 	int		pQos;											//QOS
 	int		pRetain;										//Retain flag
@@ -268,6 +270,7 @@ typedef struct
 {
 	bool 			wifiConnected;
 	bool 			mqttConnected;
+	char 			macAddr[SIZE_32];
 	TEMP_SENSOR		tempSenData;
 	MQTT_PAYLOADER	mqttPayload;
 }IPC_COMM;

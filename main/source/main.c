@@ -130,7 +130,7 @@ static esp_err_t mqttEventHandler(esp_mqtt_event_handle_t event)
         break;
         case MQTT_EVENT_PUBLISHED:
 		{
-            ESP_LOGI(mqttEventHandlerTag, "MQTT_EVENT_PUBLISHED, msgId=%d", event->msg_id);
+            //ESP_LOGI(mqttEventHandlerTag, "MQTT_EVENT_PUBLISHED, msgId=%d", event->msg_id);
 			ipcCommArea.mqttPayload.pDataLoaded = FALSE; //Published
 		}
         break;
@@ -401,6 +401,7 @@ void mainTask(void *arg)
 {
 	wifi_ap_record_t ap_info;
 	char timeBuffer[SIZE_32];
+	uint8_t mac[6] = {0};
 
 	ESP_LOGI(wifiTaskTag, "ESP WIFI Station Mode Task..!");
 	if(wifiFlowCntrl.wifiStConfig.enable)
@@ -442,6 +443,9 @@ void mainTask(void *arg)
 				strcpy((char *)wifiFlowCntrl.wifiCoreConfig.sta.password,wifiFlowCntrl.wifiStConfig.clientConf.passWd);
 
 				ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+				ESP_ERROR_CHECK(esp_wifi_get_mac(ESP_IF_WIFI_STA,mac));
+				sprintf(ipcCommArea.macAddr,"%02x:%02x:%02x:%02x:%02x:%02x",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+
 				ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifiFlowCntrl.wifiCoreConfig));
 				ESP_ERROR_CHECK(esp_wifi_start());
 
@@ -611,8 +615,8 @@ void mqttTask(void *arg)
 #else
 					strftime(buffer,sizeof(buffer),"%F %T",&timeinfo);
 					sprintf((char *)ipcCommArea.mqttPayload.pTopic,mosquittoTopic,MQTT_CLIENT_ID);
-					sprintf((char *)ipcCommArea.mqttPayload.pBuffer,mosquittoData,buffer,
-																	ipcCommArea.tempSenData.temperature,
+					sprintf((char *)ipcCommArea.mqttPayload.pBuffer,mosquittoData,ESP_SERIAL_NO,ipcCommArea.macAddr,
+																	buffer,ipcCommArea.tempSenData.temperature,
 																	ipcCommArea.tempSenData.humidity);
 					ipcCommArea.mqttPayload.pDataLoaded = TRUE;
 #if MQTT_ENCRYPT_ENABLE
@@ -628,7 +632,6 @@ void mqttTask(void *arg)
 
 					if(ipcCommArea.mqttPayload.pDataLoaded)
 					{
-						//ipcCommArea.mqttPayload.pDataLoaded = FALSE;
 						ipcCommArea.mqttPayload.pMsgId = esp_mqtt_client_publish( mqttFlowCntrl.mqttClient,
 														(const char *)ipcCommArea.mqttPayload.pTopic, 
 #if MQTT_ENCRYPT_ENABLE
@@ -642,7 +645,7 @@ void mqttTask(void *arg)
 														0,
 #endif
 														1, 0);
-						ESP_LOGI(mqttTaskTag, "Publish initiated.., msgId=%d\n", ipcCommArea.mqttPayload.pMsgId);
+						//ESP_LOGI(mqttTaskTag, "Publish initiated.., msgId=%d\n", ipcCommArea.mqttPayload.pMsgId);
 					}
 				}
 
